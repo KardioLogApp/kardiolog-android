@@ -1,0 +1,4 @@
+-keepattributes *Annotation*, InnerClasses, Signature, EnclosingMethod
+-dontwarn kotlin.**
+-dontwarn kotlinx.**
+-keep class com.example.addnevnik.** { *; }
