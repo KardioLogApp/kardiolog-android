@@ -13,7 +13,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import com.example.addnevnik.data.repository.SettingsRepository
+import com.example.addnevnik.model.SettingsUiState
 import com.example.addnevnik.navigation.AppNavigation
 import com.example.addnevnik.ui.theme.ADDnevnikTheme
 import kotlinx.coroutines.flow.first
@@ -30,10 +33,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        checkAndRequestNotificationPermission()
+        val app = application as AppDnevnikApplication
+        val repository = SettingsRepository.getInstance(applicationContext, app.database.appDao())
+
+        checkAndRequestNotificationPermission(repository)
 
         setContent {
-            ADDnevnikTheme {
+            val settings by repository.settings.collectAsState(initial = SettingsUiState())
+            ADDnevnikTheme(darkTheme = settings.darkThemeEnabled) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -44,9 +51,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun checkAndRequestNotificationPermission() {
+    private fun checkAndRequestNotificationPermission(repository: SettingsRepository) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val repository = SettingsRepository.getInstance(applicationContext)
             lifecycleScope.launch {
                 val settings = repository.settings.first()
                 if (!settings.hasRequestedNotificationPermission) {

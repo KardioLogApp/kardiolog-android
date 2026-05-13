@@ -21,7 +21,7 @@ class AppViewModelFactory(
             modelClass.isAssignableFrom(NotesViewModel::class.java) ->
                 NotesViewModel(notesRepository) as T
             modelClass.isAssignableFrom(SettingsViewModel::class.java) ->
-                SettingsViewModel(application, settingsRepository) as T
+                SettingsViewModel(application, settingsRepository, pressureRepository) as T
             else -> throw IllegalArgumentException("Unknown ViewModel class")
         }
     }

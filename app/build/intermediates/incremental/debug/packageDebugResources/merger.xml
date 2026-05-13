@@ -1,6 +1,59 @@
 <?xml version="1.0" encoding="utf-8"?>
-<merger version="3" xmlns:ns1="http://schemas.android.com/tools"><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="main$Generated" generated="true" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="C:\Android\ADDnevnik\app\src\main\res"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="main" generated-set="main$Generated" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="C:\Android\ADDnevnik\app\src\main\res"><file name="ic_launcher_background" path="C:\Android\ADDnevnik\app\src\main\res\drawable\ic_launcher_background.xml" qualifiers="" type="drawable"/><file name="ic_launcher_foreground" path="C:\Android\ADDnevnik\app\src\main\res\drawable\ic_launcher_foreground.xml" qualifiers="" type="drawable"/><file name="ic_launcher" path="C:\Android\ADDnevnik\app\src\main\res\mipmap-anydpi-v26\ic_launcher.xml" qualifiers="anydpi-v26" type="mipmap"/><file name="ic_launcher_round" path="C:\Android\ADDnevnik\app\src\main\res\mipmap-anydpi-v26\ic_launcher_round.xml" qualifiers="anydpi-v26" type="mipmap"/><file path="C:\Android\ADDnevnik\app\src\main\res\values\colors.xml" qualifiers=""><color name="ic_launcher_background">#FF6A4FA3</color></file><file path="C:\Android\ADDnevnik\app\src\main\res\values\strings.xml" qualifiers=""><string name="app_name">КардиоЛог</string><string name="screen_home">Главная</string><string name="screen_calendar">Календарь</string><string name="screen_notes">Заметки</string><string name="screen_settings">Настройки</string></file><file path="C:\Android\ADDnevnik\app\src\main\res\values\themes.xml" qualifiers=""><style name="Theme.ADDnevnik" parent="Theme.Material3.DayNight.NoActionBar">
+<merger version="3" xmlns:ns1="http://schemas.android.com/tools"><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="main$Generated" generated="true" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="C:\Android\ADDnevnik\app\src\main\res"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="main" generated-set="main$Generated" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~:!&lt;dir>navigation"><source path="C:\Android\ADDnevnik\app\src\main\res"><file name="ic_launcher_background" path="C:\Android\ADDnevnik\app\src\main\res\drawable\ic_launcher_background.xml" qualifiers="" type="drawable"/><file name="ic_launcher_foreground" path="C:\Android\ADDnevnik\app\src\main\res\drawable\ic_launcher_foreground.xml" qualifiers="" type="drawable"/><file name="ic_launcher" path="C:\Android\ADDnevnik\app\src\main\res\mipmap-anydpi-v26\ic_launcher.xml" qualifiers="anydpi-v26" type="mipmap"/><file name="ic_launcher_round" path="C:\Android\ADDnevnik\app\src\main\res\mipmap-anydpi-v26\ic_launcher_round.xml" qualifiers="anydpi-v26" type="mipmap"/><file path="C:\Android\ADDnevnik\app\src\main\res\values\colors.xml" qualifiers=""><color name="ic_launcher_background">#FF6A4FA3</color></file><file path="C:\Android\ADDnevnik\app\src\main\res\values\font_certs.xml" qualifiers=""><array name="com_google_android_gms_fonts_certs">
+        <item>@array/com_google_android_gms_fonts_certs_dev</item>
+        <item>@array/com_google_android_gms_fonts_certs_prod</item>
+    </array><string-array name="com_google_android_gms_fonts_certs_dev">
+        <item>
+            MIIEqDCCA5CgAwIBAgIJANWFuGx90071MA0GCSqGSIb3DQEBBAUAMIGUMQswCQYDVQQGEwJVUzETMBEG
+            C1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNTW91bnRhaW4gVmlldzEQMA4GA1UECgwHR29vZ2xl
+            MTARBgNVBAsMC0FuZHJvaWQxEDAOBgNVBAMMB0FuZHJvaWQxITAfBgkqhkiG9w0BCQEWEmFuZHJv
+            aWRAYW5kcm9pZC5jb20wHhcNMDgwNDE1MTgxNDA4WhcNMzUwOTAxMTgxNDA4WjCBlDELMAkGA1UE
+            BhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExFjAUBgNVBAcMDU1vdW50YWluIFZpZXcxEDAOBgNV
+            BAoMB0dvb2dsZTERMA8GA1UECwwIQW5kcm9pZDEQMA4GA1UEAwwIQW5kcm9pZDEhMB8GCSqGSIb3
+            DQEJARYSYW5kcm9pZEBhbmRyb2lkLmNvbTCCASAwDQYJKoZIhvcNAQEBBQADggENADCCAQgCggEB
+            ANs4fmuSBDS4M59W6uTOpZ4V+ZkPAnj96P/zAn6h3R9I5uB/N9kGisY+x/Zg82m8S8M6T8Uv8jH/
+            lQ1f+6q8oY+8iWqN7u8pS+HIn85L8Y1jE69WqO5O/8P/8Z6M8i6Hl6N8o1/L/8+q5N7lWp6f6H/I
+            /8+q5N7lWp6f6H/I/8+q5N7lWp6f6H/I/8+q5N7lWp6f6H/I/8+q5N7lWp6f6H/I/8+q5N7lWp6f
+            6H/I/8+q5N7lWp6f6H/I/8+q5N7lWp6f6H/I/8+q5N7lWp6f6H/I/8+q5N7lWp6f6H/I/8+q5N7l
+            Wp6f6H/I/8+q5N7lWp6f6H/I/8+q5N7lWp6f6H/I/8+q5N7lWp6f6H/I/8+q5N7lWp6f6H/I/8+q
+            5N7lWp6f6H/I/sCAwEAAaOBpjCBozAdBgNVHQ4EFgQUu7Ylg69mPZ6+fOxlCIn6C8U3pTgwUwYD
+            VR0jBEwwSoAUu7Ylg69mPZ6+fOxlCIn6C8U3pTihhpKkpIGHMIGUMQswCQYDVQQGEwJVUzETMBEG
+            C1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNTW91bnRhaW4gVmlldzEQMA4GA1UECgwHR29vZ2xl
+            MTARBgNVBAsMC0FuZHJvaWQxEDAOBgNVBAMMB0FuZHJvaWQxITAfBgkqhkiG9w0BCQEWEmFuZHJv
+            aWRAYW5kcm9pZC5jb20CCQDVhbhsfdtO9TAMBgNVHRMEBTADAQH/MA0GCSqGSIb3DQEBBAUAA4IB
+            AQCfB+O9T5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p5
+            8e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p
+            58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/
+            p58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/
+            p58e3h9o9+H5jH/p58e3h9o9
+        </item>
+    </string-array><string-array name="com_google_android_gms_fonts_certs_prod">
+        <item>
+            MIIEqDCCA5CgAwIBAgIJANWFuGx90071MA0GCSqGSIb3DQEBBAUAMIGUMQswCQYDVQQGEwJVUzETMBEG
+            C1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNTW91bnRhaW4gVmlldzEQMA4GA1UECgwHR29vZ2xl
+            MTARBgNVBAsMC0FuZHJvaWQxEDAOBgNVBAMMB0FuZHJvaWQxITAfBgkqhkiG9w0BCQEWEmFuZHJv
+            aWRAYW5kcm9pZC5jb20wHhcNMDgwNDE1MTgxNDA4WhcNMzUwOTAxMTgxNDA4WjCBlDELMAkGA1UE
+            BhMCVVMxEzARBgNVBAgMCkNhbGlmb3JuaWExFjAUBgNVBAcMDU1vdW50YWluIFZpZXcxEDAOBgNV
+            BAoMB0dvb2dsZTERMA8GA1UECwwIQW5kcm9pZDEQMA4GA1UEAwwIQW5kcm9pZDEhMB8GCSqGSIb3
+            DQEJARYSYW5kcm9pZEBhbmRyb2lkLmNvbTCCASAwDQYJKoZIhvcNAQEBBQADggENADCCAQgCggEB
+            ANs4fmuSBDS4M59W6uTOpZ4V+ZkPAnj96P/zAn6h3R9I5uB/N9kGisY+x/Zg82m8S8M6T8Uv8jH/
+            lQ1f+6q8oY+8iWqN7u8pS+HIn85L8Y1jE69WqO5O/8P/8Z6M8i6Hl6N8o1/L/8+q5N7lWp6f6H/I
+            /8+q5N7lWp6f6H/I/8+q5N7lWp6f6H/I/8+q5N7lWp6f6H/I/8+q5N7lWp6f6H/I/8+q5N7lWp6f
+            6H/I/8+q5N7lWp6f6H/I/8+q5N7lWp6f6H/I/8+q5N7lWp6f6H/I/8+q5N7lWp6f6H/I/8+q5N7l
+            Wp6f6H/I/8+q5N7lWp6f6H/I/8+q5N7lWp6f6H/I/8+q5N7lWp6f6H/I/8+q5N7lWp6f6H/I/8+q
+            5N7lWp6f6H/I/sCAwEAAaOBpjCBozAdBgNVHQ4EFgQUu7Ylg69mPZ6+fOxlCIn6C8U3pTgwUwYD
+            VR0jBEwwSoAUu7Ylg69mPZ6+fOxlCIn6C8U3pTihhpKkpIGHMIGUMQswCQYDVQQGEwJVUzETMBEG
+            C1UECAwKQ2FsaWZvcm5pYTEWMBQGA1UEBwwNTW91bnRhaW4gVmlldzEQMA4GA1UECgwHR29vZ2xl
+            MTARBgNVBAsMC0FuZHJvaWQxEDAOBgNVBAMMB0FuZHJvaWQxITAfBgkqhkiG9w0BCQEWEmFuZHJv
+            aWRAYW5kcm9pZC5jb20CCQDVhbhsfdtO9TAMBgNVHRMEBTADAQH/MA0GCSqGSIb3DQEBBAUAA4IB
+            AQCfB+O9T5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p5
+            8e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p
+            58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/
+            p58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/p58e3h9o9+H5jH/
+            p58e3h9o9+H5jH/p58e3h9o9
+        </item>
+    </string-array></file><file path="C:\Android\ADDnevnik\app\src\main\res\values\strings.xml" qualifiers=""><string name="app_name">КардиоЛог</string><string name="screen_home">Главная</string><string name="screen_settings">Настройки</string><string name="screen_chart">График</string><string name="screen_history">Дневник</string></file><file path="C:\Android\ADDnevnik\app\src\main\res\values\themes.xml" qualifiers=""><style name="Theme.ADDnevnik" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
         <item name="android:windowLightStatusBar" ns1:targetApi="m">true</item>
-    </style></file><file name="file_paths" path="C:\Android\ADDnevnik\app\src\main\res\xml\file_paths.xml" qualifiers="" type="xml"/></source></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="debug$Generated" generated="true" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="C:\Android\ADDnevnik\app\src\debug\res"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="debug" generated-set="debug$Generated" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="C:\Android\ADDnevnik\app\src\debug\res"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="generated$Generated" generated="true" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="C:\Android\ADDnevnik\app\build\generated\res\resValues\debug"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="generated" generated-set="generated$Generated" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="C:\Android\ADDnevnik\app\build\generated\res\resValues\debug"/></dataSet><mergedItems/></merger>
+    </style></file><file name="file_paths" path="C:\Android\ADDnevnik\app\src\main\res\xml\file_paths.xml" qualifiers="" type="xml"/></source></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="debug$Generated" generated="true" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="C:\Android\ADDnevnik\app\src\debug\res"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="debug" generated-set="debug$Generated" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~:!&lt;dir>navigation"><source path="C:\Android\ADDnevnik\app\src\debug\res"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="generated$Generated" generated="true" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~"><source path="C:\Android\ADDnevnik\app\build\generated\res\resValues\debug"/></dataSet><dataSet aapt-namespace="http://schemas.android.com/apk/res-auto" config="generated" generated-set="generated$Generated" ignore_pattern="!.svn:!.git:!.ds_store:!*.scc:.*:&lt;dir>_*:!CVS:!thumbs.db:!picasa.ini:!*~:!&lt;dir>navigation"><source path="C:\Android\ADDnevnik\app\build\generated\res\resValues\debug"/></dataSet><mergedItems/></merger>

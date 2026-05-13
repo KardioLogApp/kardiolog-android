@@ -7,23 +7,25 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 
 private val LightColors = lightColorScheme(
-    primary = MdThemeLightPrimary,
-    onPrimary = MdThemeLightOnPrimary,
-    primaryContainer = MdThemeLightPrimaryContainer,
-    onPrimaryContainer = MdThemeLightOnPrimaryContainer,
-    secondary = MdThemeLightSecondary,
-    background = MdThemeLightBackground,
-    surface = MdThemeLightSurface
+    primary = TealPrimary,
+    onPrimary = TealOnPrimary,
+    primaryContainer = TealPrimaryContainer,
+    onPrimaryContainer = TealOnPrimaryContainer,
+    secondary = TealSecondary,
+    background = TealBackground,
+    surface = TealSurface,
+    onSurface = TealOnSurface
 )
 
 private val DarkColors = darkColorScheme(
-    primary = MdThemeDarkPrimary,
-    onPrimary = MdThemeDarkOnPrimary,
-    primaryContainer = MdThemeDarkPrimaryContainer,
-    onPrimaryContainer = MdThemeDarkOnPrimaryContainer,
-    secondary = MdThemeDarkSecondary,
-    background = MdThemeDarkBackground,
-    surface = MdThemeDarkSurface
+    primary = TealPrimaryDark,
+    onPrimary = TealOnPrimaryDark,
+    primaryContainer = TealPrimaryContainerDark,
+    onPrimaryContainer = TealOnPrimaryDark, // Using TealOnPrimaryDark for container text too
+    secondary = TealSecondary, // Can be adjusted if needed
+    background = TealBackgroundDark,
+    surface = TealSurfaceDark,
+    onSurface = TealOnSurfaceDark
 )
 
 @Composable

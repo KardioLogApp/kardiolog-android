@@ -31,19 +31,21 @@ public final class AppDatabase_Impl extends AppDatabase {
   @Override
   @NonNull
   protected SupportSQLiteOpenHelper createOpenHelper(@NonNull final DatabaseConfiguration config) {
-    final SupportSQLiteOpenHelper.Callback _openCallback = new RoomOpenHelper(config, new RoomOpenHelper.Delegate(1) {
+    final SupportSQLiteOpenHelper.Callback _openCallback = new RoomOpenHelper(config, new RoomOpenHelper.Delegate(7) {
       @Override
       public void createAllTables(@NonNull final SupportSQLiteDatabase db) {
-        db.execSQL("CREATE TABLE IF NOT EXISTS `blood_pressure` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `systolic` INTEGER NOT NULL, `diastolic` INTEGER NOT NULL, `pulse` INTEGER NOT NULL, `timestamp_ms` INTEGER NOT NULL)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS `blood_pressure` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `systolic` INTEGER NOT NULL, `diastolic` INTEGER NOT NULL, `pulse` INTEGER NOT NULL, `timestamp_ms` INTEGER NOT NULL, `tag` TEXT, `isPrimary` INTEGER NOT NULL, `isManual` INTEGER NOT NULL)");
         db.execSQL("CREATE TABLE IF NOT EXISTS `notes` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `text` TEXT NOT NULL, `timestamp_ms` INTEGER NOT NULL)");
+        db.execSQL("CREATE TABLE IF NOT EXISTS `profile` (`id` INTEGER NOT NULL, `name` TEXT NOT NULL, `gender` TEXT NOT NULL, `birthDate` TEXT NOT NULL, `status` TEXT NOT NULL, `isPremium` INTEGER NOT NULL, `promoCode` TEXT, `premiumActivatedAt` INTEGER, PRIMARY KEY(`id`))");
         db.execSQL("CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)");
-        db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '4cc3bee1fee999a5c70b158858e9cf73')");
+        db.execSQL("INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'c6565728db18b1094cb61b32af94c821')");
       }
 
       @Override
       public void dropAllTables(@NonNull final SupportSQLiteDatabase db) {
         db.execSQL("DROP TABLE IF EXISTS `blood_pressure`");
         db.execSQL("DROP TABLE IF EXISTS `notes`");
+        db.execSQL("DROP TABLE IF EXISTS `profile`");
         final List<? extends RoomDatabase.Callback> _callbacks = mCallbacks;
         if (_callbacks != null) {
           for (RoomDatabase.Callback _callback : _callbacks) {
@@ -87,12 +89,15 @@ public final class AppDatabase_Impl extends AppDatabase {
       @NonNull
       public RoomOpenHelper.ValidationResult onValidateSchema(
           @NonNull final SupportSQLiteDatabase db) {
-        final HashMap<String, TableInfo.Column> _columnsBloodPressure = new HashMap<String, TableInfo.Column>(5);
+        final HashMap<String, TableInfo.Column> _columnsBloodPressure = new HashMap<String, TableInfo.Column>(8);
         _columnsBloodPressure.put("id", new TableInfo.Column("id", "INTEGER", true, 1, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsBloodPressure.put("systolic", new TableInfo.Column("systolic", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsBloodPressure.put("diastolic", new TableInfo.Column("diastolic", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsBloodPressure.put("pulse", new TableInfo.Column("pulse", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         _columnsBloodPressure.put("timestamp_ms", new TableInfo.Column("timestamp_ms", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsBloodPressure.put("tag", new TableInfo.Column("tag", "TEXT", false, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsBloodPressure.put("isPrimary", new TableInfo.Column("isPrimary", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsBloodPressure.put("isManual", new TableInfo.Column("isManual", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
         final HashSet<TableInfo.ForeignKey> _foreignKeysBloodPressure = new HashSet<TableInfo.ForeignKey>(0);
         final HashSet<TableInfo.Index> _indicesBloodPressure = new HashSet<TableInfo.Index>(0);
         final TableInfo _infoBloodPressure = new TableInfo("blood_pressure", _columnsBloodPressure, _foreignKeysBloodPressure, _indicesBloodPressure);
@@ -115,9 +120,27 @@ public final class AppDatabase_Impl extends AppDatabase {
                   + " Expected:\n" + _infoNotes + "\n"
                   + " Found:\n" + _existingNotes);
         }
+        final HashMap<String, TableInfo.Column> _columnsProfile = new HashMap<String, TableInfo.Column>(8);
+        _columnsProfile.put("id", new TableInfo.Column("id", "INTEGER", true, 1, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsProfile.put("name", new TableInfo.Column("name", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsProfile.put("gender", new TableInfo.Column("gender", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsProfile.put("birthDate", new TableInfo.Column("birthDate", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsProfile.put("status", new TableInfo.Column("status", "TEXT", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsProfile.put("isPremium", new TableInfo.Column("isPremium", "INTEGER", true, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsProfile.put("promoCode", new TableInfo.Column("promoCode", "TEXT", false, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        _columnsProfile.put("premiumActivatedAt", new TableInfo.Column("premiumActivatedAt", "INTEGER", false, 0, null, TableInfo.CREATED_FROM_ENTITY));
+        final HashSet<TableInfo.ForeignKey> _foreignKeysProfile = new HashSet<TableInfo.ForeignKey>(0);
+        final HashSet<TableInfo.Index> _indicesProfile = new HashSet<TableInfo.Index>(0);
+        final TableInfo _infoProfile = new TableInfo("profile", _columnsProfile, _foreignKeysProfile, _indicesProfile);
+        final TableInfo _existingProfile = TableInfo.read(db, "profile");
+        if (!_infoProfile.equals(_existingProfile)) {
+          return new RoomOpenHelper.ValidationResult(false, "profile(com.example.addnevnik.data.local.ProfileEntity).\n"
+                  + " Expected:\n" + _infoProfile + "\n"
+                  + " Found:\n" + _existingProfile);
+        }
         return new RoomOpenHelper.ValidationResult(true, null);
       }
-    }, "4cc3bee1fee999a5c70b158858e9cf73", "92da0e6321f3eedaa98abbcecb45ecef");
+    }, "c6565728db18b1094cb61b32af94c821", "e4675cd05cdb37266cb4cc18641be14d");
     final SupportSQLiteOpenHelper.Configuration _sqliteConfig = SupportSQLiteOpenHelper.Configuration.builder(config.context).name(config.name).callback(_openCallback).build();
     final SupportSQLiteOpenHelper _helper = config.sqliteOpenHelperFactory.create(_sqliteConfig);
     return _helper;
@@ -128,7 +151,7 @@ public final class AppDatabase_Impl extends AppDatabase {
   protected InvalidationTracker createInvalidationTracker() {
     final HashMap<String, String> _shadowTablesMap = new HashMap<String, String>(0);
     final HashMap<String, Set<String>> _viewTables = new HashMap<String, Set<String>>(0);
-    return new InvalidationTracker(this, _shadowTablesMap, _viewTables, "blood_pressure","notes");
+    return new InvalidationTracker(this, _shadowTablesMap, _viewTables, "blood_pressure","notes","profile");
   }
 
   @Override
@@ -139,6 +162,7 @@ public final class AppDatabase_Impl extends AppDatabase {
       super.beginTransaction();
       _db.execSQL("DELETE FROM `blood_pressure`");
       _db.execSQL("DELETE FROM `notes`");
+      _db.execSQL("DELETE FROM `profile`");
       super.setTransactionSuccessful();
     } finally {
       super.endTransaction();

@@ -5,8 +5,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ShowChart
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.NoteAlt
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -37,10 +37,9 @@ import com.example.addnevnik.screens.HomeScreen
 import com.example.addnevnik.ui.screens.ChartScreen
 import com.example.addnevnik.ui.screens.report.ReportScreen
 import com.example.addnevnik.ui.screens.scan.ScanScreen
-import com.example.addnevnik.screens.NotesScreen
+import com.example.addnevnik.screens.HistoryScreen
 import com.example.addnevnik.screens.SettingsScreen
 import com.example.addnevnik.viewmodel.HomeViewModel
-import com.example.addnevnik.viewmodel.NotesViewModel
 import com.example.addnevnik.viewmodel.SettingsViewModel
 
 data class BottomDestination(
@@ -51,7 +50,7 @@ data class BottomDestination(
 
 object AppRoute {
     const val Home = "home"
-    const val Notes = "notes"
+    const val History = "history"
     const val Settings = "settings"
     const val Chart = "chart"
     const val Scan = "scan"
@@ -83,8 +82,8 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
 
     val destinations = listOf(
         BottomDestination(AppRoute.Home, R.string.screen_home, Icons.Outlined.Home),
+        BottomDestination(AppRoute.History, R.string.screen_history, Icons.Outlined.History),
         BottomDestination(AppRoute.Chart, R.string.screen_chart, Icons.AutoMirrored.Outlined.ShowChart),
-        BottomDestination(AppRoute.Notes, R.string.screen_notes, Icons.Outlined.NoteAlt),
         BottomDestination(AppRoute.Settings, R.string.screen_settings, Icons.Outlined.Settings)
     )
 
@@ -110,7 +109,7 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
 
                     HomeScreen(
                         viewModel = vm,
-                        onShowChart = { navController.navigate(AppRoute.Chart) },
+                        onShowChart = { navController.navigate(AppRoute.History) },
                         onScanRequest = { navController.navigate(AppRoute.Scan) },
                         onShowReport = { navController.navigate(AppRoute.Report) },
                         scanResult = scanResult
@@ -124,9 +123,10 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                         onBack = { navController.popBackStack() }
                     )
                 }
-                composable(AppRoute.Notes) {
-                    val vm: NotesViewModel = viewModel(factory = factory)
-                    NotesScreen(viewModel = vm)
+                composable(AppRoute.History) {
+                    val vm: HomeViewModel = viewModel(factory = factory)
+                    val svm: SettingsViewModel = viewModel(factory = factory)
+                    HistoryScreen(viewModel = vm, settingsViewModel = svm)
                 }
                 composable(AppRoute.Settings) {
                     val vm: SettingsViewModel = viewModel(factory = factory)
@@ -137,7 +137,12 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                         onThemeToggle = vm::updateTheme,
                         onMorningReminderToggle = vm::updateMorningReminder,
                         onEveningReminderToggle = vm::updateEveningReminder,
-                        onEditClick = vm::enterEditMode
+                        onEditClick = vm::enterEditMode,
+                        onUpdateName = vm::updateProfileName,
+                        onUpdateGender = vm::updateGender,
+                        onUpdateBirthDate = vm::updateBirthDate,
+                        onLoadTestData = { vm.loadTestData {} },
+                        onActivatePromo = vm::activatePremium
                     )
                 }
                 composable(AppRoute.Scan) {
@@ -154,7 +159,8 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                 composable(AppRoute.Report) {
                     ReportScreen(
                         onBack = { navController.popBackStack() },
-                        repository = pressureRepository
+                        repository = pressureRepository,
+                        settingsRepository = settingsRepository
                     )
                 }
             }
@@ -185,12 +191,14 @@ private fun BottomBar(
             NavigationBarItem(
                 selected = selected,
                 onClick = {
-                    navController.navigate(destination.route) {
-                        popUpTo(navController.graph.findStartDestination().id) {
-                            saveState = true
+                    if (currentDestination?.route != destination.route) {
+                        navController.navigate(destination.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
                         }
-                        launchSingleTop = true
-                        restoreState = true
                     }
                 },
                 icon = {

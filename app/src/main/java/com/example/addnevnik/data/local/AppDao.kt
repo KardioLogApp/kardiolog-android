@@ -47,4 +47,11 @@ interface AppDao {
 
     @Delete
     suspend fun deleteNote(note: NoteEntity)
+
+    // Profile
+    @Query("SELECT * FROM profile WHERE id = 0")
+    fun getProfile(): Flow<ProfileEntity?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertProfile(profile: ProfileEntity)
 }
