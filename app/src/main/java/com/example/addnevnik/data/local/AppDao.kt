@@ -48,6 +48,16 @@ interface AppDao {
     @Delete
     suspend fun deleteNote(note: NoteEntity)
 
+    // Daily Notes
+    @Query("SELECT * FROM daily_notes WHERE dateKey = :dateKey LIMIT 1")
+    suspend fun getDailyNote(dateKey: String): DailyNoteEntity?
+
+    @Query("SELECT * FROM daily_notes")
+    fun getAllDailyNotes(): Flow<List<DailyNoteEntity>>
+
+    @androidx.room.Upsert
+    suspend fun upsertDailyNote(note: DailyNoteEntity)
+
     // Profile
     @Query("SELECT * FROM profile WHERE id = 0")
     fun getProfile(): Flow<ProfileEntity?>

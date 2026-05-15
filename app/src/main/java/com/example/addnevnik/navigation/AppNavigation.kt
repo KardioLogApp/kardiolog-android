@@ -2,6 +2,7 @@ package com.example.addnevnik.navigation
 
 import android.content.Context
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ShowChart
@@ -13,14 +14,13 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
-import androidx.compose.ui.platform.LocalContext
-import com.example.addnevnik.AppDnevnikApplication
-import com.example.addnevnik.data.repository.NotesRepository
-import com.example.addnevnik.data.repository.PressureRepository
-import com.example.addnevnik.data.repository.SettingsRepository
-import com.example.addnevnik.viewmodel.AppViewModelFactory
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -31,14 +31,19 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.addnevnik.AppDnevnikApplication
 import com.example.addnevnik.R
-import com.example.addnevnik.ui.screens.DisclaimerScreen
+import com.example.addnevnik.data.repository.NotesRepository
+import com.example.addnevnik.data.repository.PressureRepository
+import com.example.addnevnik.data.repository.SettingsRepository
+import com.example.addnevnik.screens.HistoryScreen
 import com.example.addnevnik.screens.HomeScreen
+import com.example.addnevnik.screens.SettingsScreen
 import com.example.addnevnik.ui.screens.ChartScreen
+import com.example.addnevnik.ui.screens.DisclaimerScreen
 import com.example.addnevnik.ui.screens.report.ReportScreen
 import com.example.addnevnik.ui.screens.scan.ScanScreen
-import com.example.addnevnik.screens.HistoryScreen
-import com.example.addnevnik.screens.SettingsScreen
+import com.example.addnevnik.viewmodel.AppViewModelFactory
 import com.example.addnevnik.viewmodel.HomeViewModel
 import com.example.addnevnik.viewmodel.SettingsViewModel
 
@@ -87,19 +92,33 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
         BottomDestination(AppRoute.Settings, R.string.screen_settings, Icons.Outlined.Settings)
     )
 
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+
+    val showBottomBar = currentRoute in setOf(
+        AppRoute.Home,
+        AppRoute.History,
+        AppRoute.Chart,
+        AppRoute.Settings
+    )
+
     Box {
         Scaffold(
             bottomBar = {
-                BottomBar(
-                    navController = navController,
-                    destinations = destinations
-                )
+                if (showBottomBar) {
+                    BottomBar(
+                        navController = navController,
+                        destinations = destinations
+                    )
+                }
             }
         ) { innerPadding ->
             NavHost(
                 navController = navController,
                 startDestination = AppRoute.Home,
-                modifier = Modifier.padding(innerPadding)
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .imePadding()
             ) {
                 composable(AppRoute.Home) {
                     val vm: HomeViewModel = viewModel(factory = factory)
@@ -115,6 +134,7 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                         scanResult = scanResult
                     )
                 }
+
                 composable(AppRoute.Chart) {
                     val vm: HomeViewModel = viewModel(factory = factory)
                     val allPressure by vm.allPressure.collectAsStateWithLifecycle()
@@ -123,11 +143,13 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                         onBack = { navController.popBackStack() }
                     )
                 }
+
                 composable(AppRoute.History) {
                     val vm: HomeViewModel = viewModel(factory = factory)
                     val svm: SettingsViewModel = viewModel(factory = factory)
                     HistoryScreen(viewModel = vm, settingsViewModel = svm)
                 }
+
                 composable(AppRoute.Settings) {
                     val vm: SettingsViewModel = viewModel(factory = factory)
                     val state by vm.state.collectAsStateWithLifecycle()
@@ -145,17 +167,20 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                         onActivatePromo = vm::activatePremium
                     )
                 }
+
                 composable(AppRoute.Scan) {
                     ScanScreen(
-                        onResult = { result ->
+                        onResult = { sys, dia, pulse ->
+                            val p = pulse?.toString() ?: ""
                             navController.previousBackStackEntry
                                 ?.savedStateHandle
-                                ?.set("scan_result", "${result.systolic},${result.diastolic},${result.pulse}")
+                                ?.set("scan_result", "$sys,$dia,$p")
                             navController.popBackStack()
                         },
                         onBack = { navController.popBackStack() }
                     )
                 }
+
                 composable(AppRoute.Report) {
                     ReportScreen(
                         onBack = { navController.popBackStack() },
@@ -188,6 +213,7 @@ private fun BottomBar(
     NavigationBar {
         destinations.forEach { destination ->
             val selected = currentDestination?.hierarchy?.any { it.route == destination.route } == true
+
             NavigationBarItem(
                 selected = selected,
                 onClick = {
@@ -207,7 +233,9 @@ private fun BottomBar(
                         contentDescription = stringResource(destination.titleRes)
                     )
                 },
-                label = { Text(text = stringResource(destination.titleRes)) }
+                label = {
+                    Text(text = stringResource(destination.titleRes))
+                }
             )
         }
     }

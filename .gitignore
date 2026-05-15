@@ -1,2 +1,10 @@
 
 .idea/firebender/
+
+.gradle/
+app/build/
+*.apk
+*.aab
+.idea/
+!.idea/gradle.xml
+!.idea/modules.xml

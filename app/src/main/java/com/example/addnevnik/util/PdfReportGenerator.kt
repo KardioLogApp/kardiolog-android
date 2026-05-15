@@ -15,11 +15,16 @@ import java.util.Locale
 
 data class MeasurementRow(
     val date: Long,
+    val morningTime: String?,   // format "HH:mm", nullable if no morning measurement
+    val eveningTime: String?,   // format "HH:mm", nullable if no evening measurement
     val morningAd: String?,
     val morningHr: Int?,
     val eveningAd: String?,
     val eveningHr: Int?,
-    val note: String? = null
+    val note: String? = null,
+    val medication: String? = null,   // from DailyNoteEntity
+    val wellbeing: String? = null,    // from DailyNoteEntity
+    val outOfRangeCount: Int = 0      // measurements outside morning/evening windows
 )
 
 data class PatientInfo(
@@ -35,32 +40,66 @@ object PdfReportGenerator {
 
     private val dateFmt = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
     private val titleFmt = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
+    private val fileDateFmt = SimpleDateFormat("dd.MM.yyyy", Locale.getDefault())
 
-    private const val PW = 595
-    private const val PH = 842
-    private const val M = 40f
+    private const val PW = 595f
+    private const val PH = 842f
+    private const val MARGIN_LEFT = 57f
+    private const val MARGIN_RIGHT = 28f
+    private const val MARGIN_TOP = 16f
 
-    private const val C_DATE = 80f
-    private const val C_MAD = 80f
-    private const val C_MHR = 55f
-    private const val C_EAD = 80f
-    private const val C_EHR = 55f
-    private const val C_NOTE = 165f
+    private val workingWidth = PW - MARGIN_LEFT - MARGIN_RIGHT
+    private val C_DATE = workingWidth * 0.12f
+    private val C_MAD  = workingWidth * 0.18f
+    private val C_MHR  = workingWidth * 0.10f
+    private val C_EAD  = workingWidth * 0.18f
+    private val C_EHR  = workingWidth * 0.10f
+    private val C_NOTE = workingWidth * 0.32f
 
-    private const val ROW_H = 22f
-    private const val HEAD_H = 26f
+    private const val HEAD_H = 38f
+    private const val ROW_H = 28f
+    private const val ROW_H_EXPANDED = 40f
+    private const val INFO_BLOCK_H = 36f
+    private const val INFO_LINE_H = 12f
+    private const val INFO_FONT_SIZE = 9f
+    private const val GAP_BEFORE_TABLE = 6f
 
-    private val COL_HEADER_BG = Color.parseColor("#2C3E50")
-    private val COL_HEADER_TEXT = Color.WHITE
+    private const val THRESHOLD_SYSTOLIC = 135
+    private const val THRESHOLD_DIASTOLIC = 85
+
+    private val COL_HEADER_BG = Color.parseColor("#1A7A7A")
+    private val COL_HEADER_EVENING = Color.parseColor("#489595") // COL_HEADER + 20% white
     private val COL_ROW_EVEN = Color.parseColor("#F2F2F2")
     private val COL_ROW_ODD = Color.WHITE
+    private val COL_DATE_TINT = Color.parseColor("#08000000") // Subtle tint overlay
     private val COL_LINE = Color.parseColor("#CCCCCC")
     private val COL_BOLD_LINE = Color.parseColor("#888888")
     private val COL_HIGH_SYST = Color.parseColor("#C0392B")
     private val COL_HIGH_DIAS = Color.parseColor("#E67E22")
     private val COL_TEXT = Color.parseColor("#1A1A1A")
     private val COL_MUTED = Color.parseColor("#555555")
-    private val COL_ACCENT = Color.parseColor("#2980B9")
+    private val COL_ACCENT = Color.parseColor("#1A7A7A")
+    private val COL_EMPTY = Color.parseColor("#AAAAAA")
+
+    private var typefaceRegular: Typeface? = null
+    private var typefaceBold: Typeface? = null
+
+    private fun loadTypefaces(context: Context) {
+        if (typefaceRegular == null) {
+            typefaceRegular = try {
+                Typeface.createFromAsset(context.assets, "fonts/NotoSans-Regular.ttf")
+            } catch (e: Exception) {
+                Typeface.DEFAULT
+            }
+        }
+        if (typefaceBold == null) {
+            typefaceBold = try {
+                Typeface.createFromAsset(context.assets, "fonts/NotoSans-Bold.ttf")
+            } catch (e: Exception) {
+                Typeface.DEFAULT_BOLD
+            }
+        }
+    }
 
     fun generate(
         context: Context,
@@ -68,42 +107,56 @@ object PdfReportGenerator {
         rows: List<MeasurementRow>,
         locale: Locale = Locale.getDefault()
     ): File {
+        loadTypefaces(context)
         val isRu = locale.language == "ru"
 
         val doc = PdfDocument()
         var pageNum = 1
         var page = newPage(doc, pageNum)
         var canvas = page.canvas
-        var y = M
+        var y = MARGIN_TOP
 
         y = drawDocHeader(canvas, patient, rows, y, isRu)
         y = drawTableHeader(canvas, y, isRu)
 
-        val sorted = rows.sortedByDescending { it.date }
+        val sorted = rows.sortedBy { it.date }
         sorted.forEachIndexed { i, row ->
-            if (y + ROW_H > PH - M - 30f) {
+            val expandedRow = !row.medication.isNullOrBlank() || !row.wellbeing.isNullOrBlank()
+            val currentH = if (expandedRow) ROW_H_EXPANDED else ROW_H
+            if (y + currentH > PH - MARGIN_TOP - 30f) {
                 drawPageFooter(canvas, pageNum)
                 doc.finishPage(page)
                 pageNum++
                 page = newPage(doc, pageNum)
                 canvas = page.canvas
-                y = M
+                y = MARGIN_TOP
+                
+                val patientHeader = "${patient.name}  ·  " + (if (isRu) "продолжение" else "continuation")
+                val phPaint = paint(8f, COL_MUTED)
+                canvas.drawText(patientHeader, MARGIN_LEFT + workingWidth - phPaint.measureText(patientHeader), y + 8f, phPaint)
+                y += 12f
+
                 y = drawTableHeader(canvas, y, isRu)
             }
             y = drawRow(canvas, row, y, i % 2 == 0)
         }
 
-        drawLine(canvas, M, y, PW - M, y, COL_BOLD_LINE, 1f)
-        y += 14f
-        drawSummary(canvas, patient, y, isRu)
+        drawLine(canvas, MARGIN_LEFT, y, MARGIN_LEFT + workingWidth, y, COL_BOLD_LINE, 1f)
+        y += 20f
+        drawSummary(canvas, patient, sorted, y, isRu)
 
         drawPageFooter(canvas, pageNum)
         doc.finishPage(page)
 
-        val name = if (isRu) {
-            "Dnevnik_AD_${System.currentTimeMillis()}.pdf"
-        } else {
-            "BloodPressure_Diary_${System.currentTimeMillis()}.pdf"
+        val startDate = rows.minOfOrNull { it.date }?.let { fileDateFmt.format(Date(it)) } ?: "unknown"
+        val endDate = rows.maxOfOrNull { it.date }?.let { fileDateFmt.format(Date(it)) } ?: "unknown"
+        val nameParts = patient.name.trim().split("\\s+".toRegex())
+        val lastName = transliterate(nameParts.getOrNull(0) ?: "Patient")
+        val firstName = transliterate(nameParts.getOrNull(1) ?: "")
+
+        val name = buildString {
+            append(lastName); if (firstName.isNotEmpty()) append("_$firstName")
+            append("_AD_$startDate-$endDate.pdf")
         }
 
         val file = File(context.getExternalFilesDir(null), name)
@@ -113,245 +166,361 @@ object PdfReportGenerator {
     }
 
     private fun newPage(doc: PdfDocument, num: Int): PdfDocument.Page {
-        val info = PdfDocument.PageInfo.Builder(PW, PH, num).create()
+        val info = PdfDocument.PageInfo.Builder(PW.toInt(), PH.toInt(), num).create()
         return doc.startPage(info)
     }
 
-    private fun drawDocHeader(
-        c: Canvas,
-        p: PatientInfo,
-        rows: List<MeasurementRow>,
-        startY: Float,
-        isRu: Boolean
-    ): Float {
+    private fun drawDocHeader(c: Canvas, p: PatientInfo, rows: List<MeasurementRow>, startY: Float, isRu: Boolean): Float {
         var y = startY
-
         val titlePaint = paint(18f, COL_TEXT, bold = true)
-        val title = if (isRu) {
-            "Дневник самоконтроля артериального давления"
-        } else {
-            "Blood Pressure Diary"
-        }
-        c.drawText(title, (PW - titlePaint.measureText(title)) / 2f, y + 18f, titlePaint)
+        val title = if (isRu) "Дневник самоконтроля артериального давления" else "Blood Pressure Diary"
+        c.drawText(title, MARGIN_LEFT + (workingWidth - titlePaint.measureText(title)) / 2f, y + 18f, titlePaint)
         y += 32f
 
-        drawLine(c, M, y, PW - M, y, COL_ACCENT, 1.5f)
-        y += 10f
+        drawLine(c, MARGIN_LEFT, y, MARGIN_LEFT + workingWidth, y, COL_ACCENT, 1.5f)
+        
+        val infoBlockTop = y
+        val totalTextH = INFO_LINE_H + INFO_FONT_SIZE
+        val infoStartY = infoBlockTop + (INFO_BLOCK_H - totalTextH) / 2f + INFO_FONT_SIZE
 
-        val reg = paint(10f, COL_MUTED)
-        val bold = paint(10f, COL_TEXT, bold = true)
+        val reg = paint(INFO_FONT_SIZE, COL_MUTED)
+        val bold = paint(INFO_FONT_SIZE, COL_TEXT, bold = true)
+        val xCol2 = MARGIN_LEFT + workingWidth * 0.5f
 
-        val lblPatient = if (isRu) "Пациент:" else "Patient:"
-        val lblGender = if (isRu) "Пол:" else "Gender:"
-        val lblBirth = if (isRu) "Дата рождения:" else "Birth Date:"
-        val lblPeriod = if (isRu) "Период наблюдения:" else "Observation Period:"
+        // Line 1
+        val label1 = if (isRu) "Пациент: " else "Patient: "
+        c.drawText(label1, MARGIN_LEFT, infoStartY, reg)
+        c.drawText(p.name.ifBlank { "—" }, MARGIN_LEFT + reg.measureText(label1), infoStartY, bold)
+        
+        val label2 = if (isRu) "Пол: " else "Gender: "
+        c.drawText(label2, xCol2, infoStartY, reg)
+        c.drawText(p.gender.ifBlank { "—" }, xCol2 + reg.measureText(label2), infoStartY, bold)
 
-        c.drawText(lblPatient, M, y, reg)
-        c.drawText(p.name.ifBlank { "—" }, M + 80f, y, bold)
-        c.drawText(lblGender, PW / 2f, y, reg)
-        c.drawText(p.gender.ifBlank { "—" }, PW / 2f + 50f, y, bold)
-        y += 16f
-
-        c.drawText(lblBirth, M, y, reg)
-        c.drawText(p.birthDate.ifBlank { "—" }, M + 80f, y, bold)
-
+        // Line 2
+        val y2 = infoStartY + INFO_LINE_H
+        val label3 = if (isRu) "Дата рождения: " else "Birth Date: "
+        c.drawText(label3, MARGIN_LEFT, y2, reg)
+        c.drawText(p.birthDate.ifBlank { "—" }, MARGIN_LEFT + reg.measureText(label3), y2, bold)
+        
         if (rows.isNotEmpty()) {
             val minD = titleFmt.format(Date(rows.minOf { it.date }))
             val maxD = titleFmt.format(Date(rows.maxOf { it.date }))
-            c.drawText(lblPeriod, PW / 2f, y, reg)
-            c.drawText("$minD — $maxD", PW / 2f + 115f, y, bold)
+            val label4 = if (isRu) "Период наблюдения: " else "Observation Period: "
+            c.drawText(label4, xCol2, y2, reg)
+            c.drawText("$minD — $maxD", xCol2 + reg.measureText(label4), y2, bold)
         }
 
-        y += 20f
-        drawLine(c, M, y, PW - M, y, COL_LINE, 0.5f)
-        y += 12f
-
-        return y
+        val afterInfoY = infoBlockTop + INFO_BLOCK_H
+        drawLine(c, MARGIN_LEFT, afterInfoY, MARGIN_LEFT + workingWidth, afterInfoY, COL_LINE, 0.5f)
+        
+        return afterInfoY + GAP_BEFORE_TABLE
     }
 
     private fun drawTableHeader(c: Canvas, startY: Float, isRu: Boolean): Float {
         val bot = startY + HEAD_H
+        val pTeal = Paint().apply { color = COL_HEADER_BG }
+        val pLighterTeal = Paint().apply { color = COL_HEADER_EVENING }
+        
+        // Zone 1: Date
+        c.drawRect(MARGIN_LEFT, startY, MARGIN_LEFT + C_DATE, bot, pTeal)
+        // Zone 2: Morning
+        c.drawRect(MARGIN_LEFT + C_DATE, startY, MARGIN_LEFT + C_DATE + C_MAD + C_MHR, bot, pTeal)
+        // Zone 3: Evening
+        c.drawRect(MARGIN_LEFT + C_DATE + C_MAD + C_MHR, startY, MARGIN_LEFT + C_DATE + C_MAD + C_MHR + C_EAD + C_EHR, bot, pLighterTeal)
+        // Zone 4: Note
+        c.drawRect(MARGIN_LEFT + C_DATE + C_MAD + C_MHR + C_EAD + C_EHR, startY, MARGIN_LEFT + workingWidth, bot, pTeal)
 
-        val bg = Paint().apply { color = COL_HEADER_BG }
-        c.drawRect(M, startY, PW - M, bot, bg)
-
-        val hp = paint(9f, COL_HEADER_TEXT, bold = true)
+        val hp = paint(8f, Color.WHITE, bold = true)
+        val up = paint(6.8f, Color.argb(216, 255, 255, 255))
+        
         val heads = if (isRu) {
-            listOf("Дата", "Утро АД", "Утро ЧСС", "Вечер АД", "Вечер ЧСС", "Примечание")
+            listOf("Дата", "Утро АД\nмм рт.ст.", "Утро ЧСС\nуд/мин", "Вечер АД\nмм рт.ст.", "Вечер ЧСС\nуд/мин", "Примечание")
         } else {
-            listOf("Date", "Morning BP", "Morning HR", "Evening BP", "Evening HR", "Notes")
+            listOf("Date", "Morning BP\nmmHg", "Morning HR\nbpm", "Evening BP\nmmHg", "Evening HR\nbpm", "Note")
         }
         val widths = listOf(C_DATE, C_MAD, C_MHR, C_EAD, C_EHR, C_NOTE)
 
-        var x = M
-        val textY = startY + HEAD_H / 2f + hp.textSize / 2f - 2f
+        var x = MARGIN_LEFT
         for (i in heads.indices) {
-            val tw = hp.measureText(heads[i])
-            c.drawText(heads[i], x + (widths[i] - tw) / 2f, textY, hp)
-            if (i > 0) {
-                drawLine(c, x, startY, x, bot, Color.parseColor("#4A5568"), 0.5f)
+            val parts = heads[i].split("\n")
+            if (parts.size > 1) {
+                val h1 = 10f; val h2 = 8f; val spacing = 2f
+                val totalH = h1 + h2 + spacing
+                val topY = startY + (HEAD_H - totalH) / 2f
+                
+                val tw1 = hp.measureText(parts[0])
+                c.drawText(parts[0], x + (widths[i] - tw1) / 2f, topY + h1, hp)
+                val tw2 = up.measureText(parts[1])
+                c.drawText(parts[1], x + (widths[i] - tw2) / 2f, topY + h1 + spacing + h2, up)
+            } else {
+                val tw = hp.measureText(heads[i])
+                c.drawText(heads[i], x + (widths[i] - tw) / 2f, startY + HEAD_H / 2f + 4f, hp)
             }
             x += widths[i]
         }
-        drawLine(c, PW - M, startY, PW - M, bot, Color.parseColor("#4A5568"), 0.5f)
-
         return bot
     }
 
     private fun drawRow(c: Canvas, row: MeasurementRow, startY: Float, even: Boolean): Float {
-        val bot = startY + ROW_H
-
-        val bg = Paint().apply { color = if (even) COL_ROW_EVEN else COL_ROW_ODD }
-        c.drawRect(M, startY, PW - M, bot, bg)
+        val expandedRow = !row.medication.isNullOrBlank() || !row.wellbeing.isNullOrBlank()
+        val currentH = if (expandedRow) ROW_H_EXPANDED else ROW_H
+        val rowBgColor = if (even) COL_ROW_EVEN else COL_ROW_ODD
+        c.drawRect(MARGIN_LEFT, startY, MARGIN_LEFT + workingWidth, startY + currentH, Paint().apply { color = rowBgColor })
+        
+        // Date column tint
+        c.drawRect(MARGIN_LEFT, startY, MARGIN_LEFT + C_DATE, startY + currentH, Paint().apply { color = COL_DATE_TINT })
 
         val widths = listOf(C_DATE, C_MAD, C_MHR, C_EAD, C_EHR, C_NOTE)
-        val textY = startY + ROW_H / 2f + 9f / 2f + 3f
+        val rowCenterY = startY + currentH / 2f
 
         fun adColor(ad: String?): Int {
-            if (ad == null) return COL_MUTED
-            val parts = ad.split("/")
-            val syst = parts.getOrNull(0)?.toIntOrNull() ?: return COL_TEXT
-            val dias = parts.getOrNull(1)?.toIntOrNull() ?: return COL_TEXT
-            return when {
-                syst > 139 -> COL_HIGH_SYST
-                dias > 89 -> COL_HIGH_DIAS
-                else -> COL_TEXT
-            }
+            if (ad == null) return COL_EMPTY
+            val clean = ad.removePrefix("▲"); val parts = clean.split("/")
+            val s = parts.getOrNull(0)?.toIntOrNull() ?: 0; val d = parts.getOrNull(1)?.toIntOrNull() ?: 0
+            return when { s >= THRESHOLD_SYSTOLIC -> COL_HIGH_SYST; d >= THRESHOLD_DIASTOLIC -> COL_HIGH_DIAS; else -> COL_TEXT }
+        }
+        fun formatAd(ad: String?): String {
+            if (ad == null) return "—"
+            val p = ad.split("/"); val s = p.getOrNull(0)?.toIntOrNull() ?: 0; val d = p.getOrNull(1)?.toIntOrNull() ?: 0
+            return if (s >= THRESHOLD_SYSTOLIC || d >= THRESHOLD_DIASTOLIC) "▲$ad" else ad
         }
 
-        val values = listOf(
-            dateFmt.format(Date(row.date)),
-            row.morningAd ?: "—",
-            row.morningHr?.toString() ?: "—",
-            row.eveningAd ?: "—",
-            row.eveningHr?.toString() ?: "—",
-            row.note ?: ""
-        )
+        val values = listOf(dateFmt.format(Date(row.date)), formatAd(row.morningAd), row.morningHr?.toString() ?: "—", formatAd(row.eveningAd), row.eveningHr?.toString() ?: "—")
+        val times = listOf(null, row.morningTime, null, row.eveningTime, null)
+        val colors = listOf(COL_TEXT, adColor(values[1]), if (row.morningHr == null) COL_EMPTY else COL_TEXT, adColor(values[3]), if (row.eveningHr == null) COL_EMPTY else COL_TEXT)
+        val isBold = listOf(false, true, false, true, false)
 
-        val colors = listOf(
-            COL_TEXT,
-            adColor(row.morningAd),
-            COL_TEXT,
-            adColor(row.eveningAd),
-            COL_TEXT,
-            COL_MUTED
-        )
-
-        val isBold = listOf(false, true, false, true, false, false)
-
-        var x = M
-        for (i in values.indices) {
-            drawLine(c, x, startY, x, bot, COL_LINE, 0.3f)
+        var x = MARGIN_LEFT
+        for (i in 0..4) {
             val tp = paint(9f, colors[i], bold = isBold[i])
-            var txt = values[i]
-            val maxW = widths[i] - 8f
-            while (txt.isNotEmpty() && tp.measureText(txt) > maxW) {
-                txt = txt.dropLast(1)
+            var txt = values[i]; val maxW = widths[i] - 4f
+            if (tp.measureText(txt) > maxW) {
+                while (txt.isNotEmpty() && tp.measureText("$txt…") > maxW) txt = txt.dropLast(1)
+                txt = "$txt…"
             }
-
-            val tx = if (i in listOf(1, 2, 3, 4)) {
-                x + (widths[i] - tp.measureText(txt)) / 2f
+            
+            if (i in 1..4 && times[i] != null && values[i] != "—") {
+                c.drawText(txt, x + (widths[i] - tp.measureText(txt)) / 2f, rowCenterY - 4f, tp)
+                val tTp = paint(7f, COL_MUTED)
+                c.drawText(times[i]!!, x + (widths[i] - tTp.measureText(times[i]!!)) / 2f, rowCenterY + 6f, tTp)
             } else {
-                x + 4f
+                if (i == 0) {
+                    // Date column: date on top, day-of-week below
+                    val dowFmt = java.text.SimpleDateFormat("EEE", java.util.Locale("ru"))
+                    val dow = dowFmt.format(java.util.Date(row.date)).replaceFirstChar { it.uppercase() }
+                    val dateTp = paint(9f, COL_TEXT)
+                    val dowTp = paint(7f, COL_MUTED)
+                    val dateX = x + (widths[i] - dateTp.measureText(txt)) / 2f
+                    val dowX = x + (widths[i] - dowTp.measureText(dow)) / 2f
+                    c.drawText(txt, dateX, rowCenterY - 3f, dateTp)
+                    c.drawText(dow, dowX, rowCenterY + 7f, dowTp)
+                } else {
+                    val yPos = rowCenterY + 4.5f
+                    val xPos = x + (widths[i] - tp.measureText(txt)) / 2f
+                    c.drawText(txt, xPos, yPos, tp)
+                }
             }
-
-            c.drawText(txt, tx, textY, tp)
             x += widths[i]
         }
 
-        drawLine(c, PW - M, startY, PW - M, bot, COL_LINE, 0.3f)
-        drawLine(c, M, bot, PW - M, bot, COL_LINE, 0.3f)
+        val eveningStart = MARGIN_LEFT + C_DATE + C_MAD + C_MHR
+        val noteStart = MARGIN_LEFT + C_DATE + C_MAD + C_MHR + C_EAD + C_EHR
+        val divColor = Color.argb(38, 0, 0, 0) // Subtle 15% black separator
+        
+        // Visual grouping borders
+        drawLine(c, eveningStart, startY, eveningStart, startY + currentH, divColor, 1f)
+        drawLine(c, noteStart, startY, noteStart, startY + currentH, divColor, 1f)
 
-        return bot
+        val noteLines = mutableListOf<String>()
+        if (!row.note.isNullOrBlank()) noteLines.add(row.note)
+        if (!row.medication.isNullOrBlank()) noteLines.add("Доп. препарат: ${row.medication}")
+        if (!row.wellbeing.isNullOrBlank()) noteLines.add("Самочувствие: ${row.wellbeing}")
+
+        val lineH = 9f
+        val totalNoteH = noteLines.size * lineH
+        val noteStartY = startY + (currentH - totalNoteH) / 2f + 7.5f
+
+        noteLines.forEachIndexed { idx, txt ->
+            val lY = noteStartY + (idx * lineH); val tp = if (idx == 0 && !row.note.isNullOrBlank()) paint(9f, COL_MUTED) else paint(7f, COL_MUTED)
+            var t = txt; val maxW = widths[5] - 16f // 10f left + 6f right padding
+            if (tp.measureText(t) > maxW) {
+                while (t.isNotEmpty() && tp.measureText("$t…") > maxW) t = t.dropLast(1)
+                t = "$t…"
+            }
+            c.drawText(t, noteStart + 10f, lY, tp)
+        }
+        drawLine(c, MARGIN_LEFT, startY + currentH, MARGIN_LEFT + workingWidth, startY + currentH, COL_LINE, 0.3f)
+        return startY + currentH
     }
 
-    private fun drawSummary(c: Canvas, p: PatientInfo, y: Float, isRu: Boolean) {
-        val label = if (isRu) "Средние значения за период:" else "Average values for the period:"
-        c.drawText(label, M, y, paint(10f, COL_MUTED))
+    private fun drawSummary(c: Canvas, p: PatientInfo, rows: List<MeasurementRow>, y: Float, isRu: Boolean) {
+        // Typography: COL_TEXT for labels, COL_MUTED for units/secondary, bold for values
+        val paintLabel = paint(8f, COL_TEXT)
+        val paintValue = paint(9f, COL_TEXT, bold = true)
+        val paintMuted = paint(7.5f, COL_MUTED)
+        val paintHead  = paint(7.5f, COL_MUTED)
 
-        val cardW = 100f
-        val cardH = 44f
-        val gap = 12f
-        val startX = M
-        val cardY = y + 8f
-
-        data class Card(val lbl: String, val value: String, val color: Int)
-
-        val sColor = if (p.avgSystolic > 139) COL_HIGH_SYST else COL_ACCENT
-        val dColor = if (p.avgDiastolic > 89) COL_HIGH_DIAS else COL_ACCENT
-
-        val cards = listOf(
-            Card(if (isRu) "СИСТ" else "SYS", "${p.avgSystolic}", sColor),
-            Card(if (isRu) "ДИАС" else "DIA", "${p.avgDiastolic}", dColor),
-            Card(if (isRu) "ПУЛЬС" else "HR", "${p.avgHr}", COL_TEXT)
-        )
-
-        cards.forEachIndexed { i, card ->
-            val cx = startX + i * (cardW + gap)
-            val rect = RectF(cx, cardY, cx + cardW, cardY + cardH)
-
-            val bgPaint = Paint().apply {
-                color = Color.parseColor("#F0F4F8")
-                isAntiAlias = true
-            }
-            val borderPaint = Paint().apply {
-                color = Color.parseColor("#DDE3EA")
-                style = Paint.Style.STROKE
-                strokeWidth = 1f
-                isAntiAlias = true
-            }
-
-            c.drawRoundRect(rect, 8f, 8f, bgPaint)
-            c.drawRoundRect(rect, 8f, 8f, borderPaint)
-
-            val lp = paint(8f, COL_MUTED, bold = true)
-            c.drawText(card.lbl, cx + (cardW - lp.measureText(card.lbl)) / 2f, cardY + 14f, lp)
-
-            val vp = paint(16f, card.color, bold = true)
-            c.drawText(card.value, cx + (cardW - vp.measureText(card.value)) / 2f, cardY + 36f, vp)
+        fun parse(ad: String?): Pair<Int, Int>? {
+            if (ad == null || ad == "—") return null
+            val clean = ad.removePrefix("▲")
+            val parts = clean.split("/")
+            return if (parts.size >= 2) {
+                val s = parts[0].toIntOrNull()
+                val d = parts[1].toIntOrNull()
+                if (s != null && d != null) s to d else null
+            } else null
         }
 
-        val legY = cardY + cardH + 16f
-        val redDot = Paint().apply { color = COL_HIGH_SYST; isAntiAlias = true }
-        val orDot = Paint().apply { color = COL_HIGH_DIAS; isAntiAlias = true }
+        val mS = rows.mapNotNull { parse(it.morningAd)?.first }
+        val mD = rows.mapNotNull { parse(it.morningAd)?.second }
+        val mP = rows.mapNotNull { it.morningHr }
+        val eS = rows.mapNotNull { parse(it.eveningAd)?.first }
+        val eD = rows.mapNotNull { parse(it.eveningAd)?.second }
+        val eP = rows.mapNotNull { it.eveningHr }
 
-        c.drawCircle(M + 6f, legY - 3f, 4f, redDot)
-        val legText1 = if (isRu) "— систола > 139 мм рт.ст." else "— systolic > 139 mmHg"
-        c.drawText(legText1, M + 14f, legY, paint(8f, COL_MUTED))
+        val avgMS = if (mS.isNotEmpty()) mS.average().toInt().toString() else "—"
+        val avgMD = if (mD.isNotEmpty()) mD.average().toInt().toString() else "—"
+        val avgMP = if (mP.isNotEmpty()) mP.average().toInt().toString() else "—"
+        val avgES = if (eS.isNotEmpty()) eS.average().toInt().toString() else "—"
+        val avgED = if (eD.isNotEmpty()) eD.average().toInt().toString() else "—"
+        val avgEP = if (eP.isNotEmpty()) eP.average().toInt().toString() else "—"
 
-        c.drawCircle(M + 166f, legY - 3f, 4f, orDot)
-        val legText2 = if (isRu) "— диастола > 89 мм рт.ст." else "— diastolic > 89 mmHg"
-        c.drawText(legText2, M + 174f, legY, paint(8f, COL_MUTED))
+        val avgS = p.avgSystolic.toString()
+        val avgD = p.avgDiastolic.toString()
+        val avgP = p.avgHr.toString()
+
+        // ── Section title ──────────────────────────────────────────────────────
+        val LINE_H = 14f  // vertical step between data rows
+        c.drawText(
+            if (isRu) "Средние значения за период наблюдения" else "Summary for the observation period",
+            MARGIN_LEFT, y, paint(8.5f, COL_TEXT, bold = true)
+        )
+
+        // ── Column X positions (right-aligned values) ──────────────────────────
+        val xM = MARGIN_LEFT + 245f
+        val xE = MARGIN_LEFT + 325f
+        val xT = MARGIN_LEFT + 405f
+
+        val hM = if (isRu) "Утро" else "Morning"
+        val hE = if (isRu) "Вечер" else "Evening"
+        val hT = if (isRu) "За период" else "Overall"
+
+        val y0 = y + LINE_H  // column headers row
+        c.drawText(hM, xM - paintHead.measureText(hM) / 2f, y0, paintHead)
+        c.drawText(hE, xE - paintHead.measureText(hE) / 2f, y0, paintHead)
+        c.drawText(hT, xT - paintHead.measureText(hT) / 2f, y0, paintHead)
+
+        // ── Data rows ──────────────────────────────────────────────────────────
+        val r1 = if (isRu) "Сист. АД, мм рт.ст." else "Systolic BP, mmHg"
+        val r2 = if (isRu) "Диаст. АД, мм рт.ст." else "Diastolic BP, mmHg"
+        val r3 = if (isRu) "Пульс, уд/мин" else "Pulse, bpm"
+
+        val y1 = y0 + LINE_H
+        val y2 = y1 + LINE_H
+        val y3 = y2 + LINE_H
+
+        fun drawDataRow(rowY: Float, label: String, vM: String, vE: String, vT: String, vColor: Int = COL_TEXT) {
+            c.drawText(label, MARGIN_LEFT, rowY, paintLabel)
+            val vp = paint(9f, vColor, bold = true)
+            c.drawText(vM, xM - vp.measureText(vM) / 2f, rowY, vp)
+            c.drawText(vE, xE - vp.measureText(vE) / 2f, rowY, vp)
+            c.drawText(vT, xT - vp.measureText(vT) / 2f, rowY, vp)
+        }
+
+        val sColor = if (p.avgSystolic >= THRESHOLD_SYSTOLIC) COL_HIGH_SYST else COL_TEXT
+        val dColor = if (p.avgDiastolic >= THRESHOLD_DIASTOLIC) COL_HIGH_DIAS else COL_TEXT
+
+        drawDataRow(y1, r1, avgMS, avgES, avgS, sColor)
+        drawDataRow(y2, r2, avgMD, avgED, avgD, dColor)
+        drawDataRow(y3, r3, avgMP, avgEP, avgP)
+
+        // ── Pulse pressure + elevated count ───────────────────────────────────
+        val statsY = y3 + LINE_H + 4f
+        val pulsePress = p.avgSystolic - p.avgDiastolic
+        c.drawText(
+            if (isRu) "Пульсовое давление: $pulsePress мм рт.ст." else "Pulse pressure: $pulsePress mmHg",
+            MARGIN_LEFT, statsY, paintMuted
+        )
+
+        var elevated = 0
+        rows.forEach { row ->
+            parse(row.morningAd)?.let { if (it.first >= THRESHOLD_SYSTOLIC || it.second >= THRESHOLD_DIASTOLIC) elevated++ }
+            parse(row.eveningAd)?.let { if (it.first >= THRESHOLD_SYSTOLIC || it.second >= THRESHOLD_DIASTOLIC) elevated++ }
+        }
+        val totalM = (mS.size + eS.size).coerceAtLeast(1)
+        val percent = (elevated * 100) / totalM
+        val elevY = statsY + LINE_H
+        val eTxt = if (isRu) "Превышений порога (≥ $THRESHOLD_SYSTOLIC или ≥ $THRESHOLD_DIASTOLIC): " else "Elevated readings (≥ $THRESHOLD_SYSTOLIC or ≥ $THRESHOLD_DIASTOLIC): "
+        val eVal  = if (isRu) "$elevated из $totalM ($percent%)" else "$elevated of $totalM ($percent%)"
+        c.drawText(eTxt, MARGIN_LEFT, elevY, paintLabel)
+        c.drawText(eVal, MARGIN_LEFT + paintLabel.measureText(eTxt), elevY, paint(8f, COL_TEXT, bold = true))
+
+        // ── Legend ─────────────────────────────────────────────────────────────
+        val legHeaderY = elevY + LINE_H + 4f
+        c.drawText(if (isRu) "Обозначения:" else "Legend:", MARGIN_LEFT, legHeaderY, paintMuted)
+
+        val legY = legHeaderY + LINE_H
+        val dotR = 2.5f
+
+        c.drawCircle(MARGIN_LEFT + dotR + 1f, legY - dotR - 1f, dotR,
+            Paint().apply { color = COL_HIGH_SYST; isAntiAlias = true })
+        val sysTxt = if (isRu) "— систола ≥ $THRESHOLD_SYSTOLIC мм рт.ст." else "— systolic BP ≥ $THRESHOLD_SYSTOLIC mmHg"
+        c.drawText(sysTxt, MARGIN_LEFT + dotR * 2 + 5f, legY, paintMuted)
+
+        val sysBlockW = dotR * 2 + 5f + paint(7.5f, COL_MUTED).measureText(sysTxt) + 16f
+        val dot2X = MARGIN_LEFT + sysBlockW + dotR + 1f
+        c.drawCircle(dot2X, legY - dotR - 1f, dotR,
+            Paint().apply { color = COL_HIGH_DIAS; isAntiAlias = true })
+        val diaTxt = if (isRu) "— диастола ≥ $THRESHOLD_DIASTOLIC мм рт.ст." else "— diastolic BP ≥ $THRESHOLD_DIASTOLIC mmHg"
+        c.drawText(diaTxt, dot2X + dotR + 4f, legY, paintMuted)
+
+        // ── Footnote ───────────────────────────────────────────────────────────
+        val footTxt = if (isRu)
+            "* Пороговые значения для домашнего мониторинга АД согласно КР МЗ РФ по АГ (2024) и рекомендациям ESC (2024)"
+        else
+            "* Thresholds for home BP monitoring per Russian Ministry of Health Hypertension Guidelines (2024) and ESC Guidelines (2024)"
+        c.drawText(footTxt, MARGIN_LEFT, legY + LINE_H, paint(6.5f, COL_MUTED))
+
+        // Total measurement count
+        val totalAllMeasurements = rows.count { !it.morningAd.isNullOrEmpty() } +
+            rows.count { !it.eveningAd.isNullOrEmpty() }
+        val totalOutOfRange = rows.sumOf { it.outOfRangeCount }
+        val countY = legY + LINE_H + 10f
+        val totalLabel = if (isRu)
+            "Всего замеров в таблице: $totalAllMeasurements" +
+                (if (totalOutOfRange > 0) "   (вне диапазона утро/вечер: $totalOutOfRange — не вошли в таблицу)" else "")
+        else
+            "Total readings in table: $totalAllMeasurements" +
+                (if (totalOutOfRange > 0) "   (out of morning/evening window: $totalOutOfRange — excluded)" else "")
+        c.drawText(totalLabel, MARGIN_LEFT, countY, paint(6.5f, COL_MUTED))
+
+        // Legal disclaimer
+        val disclaimerY = countY + 10f
+        val disclaimer = if (isRu)
+            "Документ сформирован на основе данных, введённых пользователем. Не является медицинским заключением."
+        else
+            "This document is generated from user-entered data. It does not constitute a medical report."
+        c.drawText(disclaimer, MARGIN_LEFT, disclaimerY, paint(6.5f, COL_MUTED))
     }
 
-    private fun drawPageFooter(c: Canvas, pageNum: Int) {
-        val txt = "CardioLog  ·  $pageNum"
-        val fp = paint(8f, COL_MUTED)
-        drawLine(c, M, PH - 28f, PW - M, PH - 28f, COL_LINE, 0.5f)
+    private fun drawPageFooter(c: Canvas, num: Int) {
+        val txt = "CardioLog  ·  $num"; val fp = paint(7f, COL_MUTED)
+        drawLine(c, MARGIN_LEFT, PH - 28f, MARGIN_LEFT + workingWidth, PH - 28f, COL_LINE, 0.5f)
         c.drawText(txt, (PW - fp.measureText(txt)) / 2f, PH - 16f, fp)
     }
 
-    private fun drawLine(
-        c: Canvas,
-        x1: Float,
-        y1: Float,
-        x2: Float,
-        y2: Float,
-        color: Int,
-        w: Float
-    ) {
-        val p = Paint().apply {
-            this.color = color
-            strokeWidth = w
-            style = Paint.Style.STROKE
-        }
-        c.drawLine(x1, y1, x2, y2, p)
+    private fun drawLine(c: Canvas, x1: Float, y1: Float, x2: Float, y2: Float, color: Int, w: Float) {
+        c.drawLine(x1, y1, x2, y2, Paint().apply { this.color = color; strokeWidth = w; style = Paint.Style.STROKE })
     }
 
     private fun paint(size: Float, color: Int, bold: Boolean = false) = Paint().apply {
-        textSize = size
-        this.color = color
-        typeface = if (bold) Typeface.create(Typeface.DEFAULT, Typeface.BOLD) else Typeface.DEFAULT
-        isAntiAlias = true
+        textSize = size; this.color = color; typeface = if (bold) typefaceBold ?: Typeface.DEFAULT_BOLD else typefaceRegular ?: Typeface.DEFAULT; isAntiAlias = true
     }
+
+    private fun transliterate(input: String): String {
+        val map = mapOf('А' to "A", 'Б' to "B", 'В' to "V", 'Г' to "G", 'Д' to "D", 'Е' to "E", 'Ё' to "E", 'Ж' to "Zh", 'З' to "Z", 'И' to "I", 'Й' to "Y", 'К' to "K", 'Л' to "L", 'М' to "M", 'Н' to "N", 'О' to "O", 'П' to "P", 'Р' to "R", 'С' to "S", 'Т' to "T", 'У' to "U", 'Ф' to "F", 'Х' to "Kh", 'Ц' to "Ts", 'Ч' to "Ch", 'Ш' to "Sh", 'Щ' to "Sch", 'Ъ' to "", 'Ы' to "Y", 'Ь' to "", 'Э' to "E", 'Ю' to "Yu", 'Я' to "Ya", 'а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'е' to "e", 'ё' to "e", 'ж' to "zh", 'з' to "z", 'и' to "i", 'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m", 'н' to "n", 'о' to "o", 'п' to "p", 'р' to "r", 'с' to "s", 'т' to "t", 'у' to "u", 'ф' to "f", 'х' to "kh", 'ц' to "ts", 'ч' to "ch", 'ш' to "sh", 'щ' to "sch", 'ъ' to "", 'ы' to "y", 'ь' to "", 'э' to "e", 'ю' to "yu", 'я' to "ya")
+        return input.map { map[it] ?: it.toString() }.joinToString("")
+    }
+
+    private data class Card(val lbl: String, val value: String, val color: Int)
 }

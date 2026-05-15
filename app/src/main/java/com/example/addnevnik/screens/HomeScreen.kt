@@ -38,9 +38,11 @@ fun HomeScreen(
     val showAddDialog by viewModel.showAddDialog.collectAsStateWithLifecycle()
     val latestPressure by viewModel.latestPressure.collectAsStateWithLifecycle()
     val allPressure by viewModel.allPressure.collectAsStateWithLifecycle()
+    val allDailyNotes by viewModel.allDailyNotes.collectAsStateWithLifecycle()
 
     if (showAddDialog) {
         AddPressureDialog(
+            viewModel = viewModel,
             initialValues = scanResult,
             onScanRequest = onScanRequest,
             onDismiss = viewModel::dismissDialog,
@@ -207,22 +209,44 @@ fun HomeScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "${entry.systolic} / ${entry.diastolic}",
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "❤️ ${entry.pulse}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = formatTimestampShort(entry.timestamp_ms),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "${entry.systolic} / ${entry.diastolic}",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                if (!entry.tag.isNullOrBlank()) {
+                                    Text(
+                                        text = entry.tag,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(entry.timestamp_ms))
+                                val dailyNote = allDailyNotes.find { it.dateKey == dateKey }
+                                if (dailyNote != null && dailyNote.medication.isNotBlank()) {
+                                    Text(
+                                        text = "Доп. препарат: ${dailyNote.medication}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                            }
+                            Column(horizontalAlignment = Alignment.End) {
+                                Text(
+                                    text = "❤️ ${entry.pulse}",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = formatTimestampShort(entry.timestamp_ms),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
                     }
                 }

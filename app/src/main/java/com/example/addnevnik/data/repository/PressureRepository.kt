@@ -2,6 +2,7 @@ package com.example.addnevnik.data.repository
 
 import com.example.addnevnik.data.local.AppDao
 import com.example.addnevnik.data.local.BloodPressureEntity
+import com.example.addnevnik.data.local.DailyNoteEntity
 import com.example.addnevnik.domain.BpStats
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,8 +14,12 @@ import kotlinx.coroutines.flow.map
 class PressureRepository private constructor(private val appDao: AppDao) {
     val latestPressure: Flow<BloodPressureEntity?> = appDao.getLatestBloodPressure()
     val allPressure: Flow<List<BloodPressureEntity>> = appDao.getAllBloodPressure()
+    val allDailyNotes: Flow<List<DailyNoteEntity>> = appDao.getAllDailyNotes()
 
     suspend fun getAllPressureOnce(): List<BloodPressureEntity> = appDao.getAllBloodPressureOnce()
+
+    suspend fun upsertDailyNote(note: DailyNoteEntity) = appDao.upsertDailyNote(note)
+    suspend fun getDailyNote(dateKey: String): DailyNoteEntity? = appDao.getDailyNote(dateKey)
 
     val lastPressure: Flow<String> = appDao.getAllBloodPressure().map { list ->
         list.firstOrNull()?.let {

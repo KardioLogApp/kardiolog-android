@@ -3,6 +3,7 @@ package com.example.addnevnik.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.addnevnik.data.local.BloodPressureEntity
+import com.example.addnevnik.data.local.DailyNoteEntity
 import com.example.addnevnik.domain.BpCategory
 import com.example.addnevnik.domain.BpClassifier
 import com.example.addnevnik.domain.BpStats
@@ -20,6 +21,13 @@ import kotlinx.coroutines.launch
 class HomeViewModel(private val pressureRepository: PressureRepository) : ViewModel() {
     private val _showAddDialog = MutableStateFlow(false)
     val showAddDialog: StateFlow<Boolean> = _showAddDialog.asStateFlow()
+
+    val allDailyNotes: StateFlow<List<DailyNoteEntity>> = pressureRepository.allDailyNotes
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
     val latestPressure: StateFlow<BloodPressureEntity?> = pressureRepository.latestPressure
         .stateIn(
@@ -127,5 +135,15 @@ class HomeViewModel(private val pressureRepository: PressureRepository) : ViewMo
         viewModelScope.launch {
             pressureRepository.setPrimary(entry)
         }
+    }
+
+    fun saveDailyNote(dateKey: String, medication: String, wellbeing: String) {
+        viewModelScope.launch {
+            pressureRepository.upsertDailyNote(DailyNoteEntity(dateKey, medication, wellbeing))
+        }
+    }
+
+    fun getDailyNoteForDate(dateKey: String): DailyNoteEntity? {
+        return allDailyNotes.value.find { it.dateKey == dateKey }
     }
 }

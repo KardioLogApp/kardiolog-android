@@ -12,6 +12,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -26,12 +27,13 @@ class MainActivity : ComponentActivity() {
 
     private val requestPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
-    ) { _ ->
-        // We just requested it, the result doesn't change that we've asked once.
-    }
+    ) { _ -> }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Передаём управление insets приложению — клавиатура сдвигает контент, не перекрывает
+        WindowCompat.setDecorFitsSystemWindows(window, false)
 
         val app = application as AppDnevnikApplication
         val repository = SettingsRepository.getInstance(applicationContext, app.database.appDao())
