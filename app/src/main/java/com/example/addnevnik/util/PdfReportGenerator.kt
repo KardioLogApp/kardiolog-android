@@ -64,6 +64,8 @@ object PdfReportGenerator {
     private const val INFO_FONT_SIZE = 9f
     private const val GAP_BEFORE_TABLE = 6f
 
+    // Порог для домашнего мониторинга АД (HBPM): 135/85 мм рт.ст.
+    // Соответствует клиническим рекомендациям по АГ (РФ, 2024) и ESC 2024 для home BP.
     private const val THRESHOLD_SYSTOLIC = 135
     private const val THRESHOLD_DIASTOLIC = 85
 
@@ -130,10 +132,15 @@ object PdfReportGenerator {
                 page = newPage(doc, pageNum)
                 canvas = page.canvas
                 y = MARGIN_TOP
-                
+
                 val patientHeader = "${patient.name}  ·  " + (if (isRu) "продолжение" else "continuation")
                 val phPaint = paint(8f, COL_MUTED)
-                canvas.drawText(patientHeader, MARGIN_LEFT + workingWidth - phPaint.measureText(patientHeader), y + 8f, phPaint)
+                canvas.drawText(
+                    patientHeader,
+                    MARGIN_LEFT + workingWidth - phPaint.measureText(patientHeader),
+                    y + 8f,
+                    phPaint
+                )
                 y += 12f
 
                 y = drawTableHeader(canvas, y, isRu)
@@ -155,7 +162,8 @@ object PdfReportGenerator {
         val firstName = transliterate(nameParts.getOrNull(1) ?: "")
 
         val name = buildString {
-            append(lastName); if (firstName.isNotEmpty()) append("_$firstName")
+            append(lastName)
+            if (firstName.isNotEmpty()) append("_$firstName")
             append("_AD_$startDate-$endDate.pdf")
         }
 
@@ -170,15 +178,26 @@ object PdfReportGenerator {
         return doc.startPage(info)
     }
 
-    private fun drawDocHeader(c: Canvas, p: PatientInfo, rows: List<MeasurementRow>, startY: Float, isRu: Boolean): Float {
+    private fun drawDocHeader(
+        c: Canvas,
+        p: PatientInfo,
+        rows: List<MeasurementRow>,
+        startY: Float,
+        isRu: Boolean
+    ): Float {
         var y = startY
         val titlePaint = paint(18f, COL_TEXT, bold = true)
         val title = if (isRu) "Дневник самоконтроля артериального давления" else "Blood Pressure Diary"
-        c.drawText(title, MARGIN_LEFT + (workingWidth - titlePaint.measureText(title)) / 2f, y + 18f, titlePaint)
+        c.drawText(
+            title,
+            MARGIN_LEFT + (workingWidth - titlePaint.measureText(title)) / 2f,
+            y + 18f,
+            titlePaint
+        )
         y += 32f
 
         drawLine(c, MARGIN_LEFT, y, MARGIN_LEFT + workingWidth, y, COL_ACCENT, 1.5f)
-        
+
         val infoBlockTop = y
         val totalTextH = INFO_LINE_H + INFO_FONT_SIZE
         val infoStartY = infoBlockTop + (INFO_BLOCK_H - totalTextH) / 2f + INFO_FONT_SIZE
@@ -191,7 +210,7 @@ object PdfReportGenerator {
         val label1 = if (isRu) "Пациент: " else "Patient: "
         c.drawText(label1, MARGIN_LEFT, infoStartY, reg)
         c.drawText(p.name.ifBlank { "—" }, MARGIN_LEFT + reg.measureText(label1), infoStartY, bold)
-        
+
         val label2 = if (isRu) "Пол: " else "Gender: "
         c.drawText(label2, xCol2, infoStartY, reg)
         c.drawText(p.gender.ifBlank { "—" }, xCol2 + reg.measureText(label2), infoStartY, bold)
@@ -201,7 +220,7 @@ object PdfReportGenerator {
         val label3 = if (isRu) "Дата рождения: " else "Birth Date: "
         c.drawText(label3, MARGIN_LEFT, y2, reg)
         c.drawText(p.birthDate.ifBlank { "—" }, MARGIN_LEFT + reg.measureText(label3), y2, bold)
-        
+
         if (rows.isNotEmpty()) {
             val minD = titleFmt.format(Date(rows.minOf { it.date }))
             val maxD = titleFmt.format(Date(rows.maxOf { it.date }))
@@ -212,7 +231,7 @@ object PdfReportGenerator {
 
         val afterInfoY = infoBlockTop + INFO_BLOCK_H
         drawLine(c, MARGIN_LEFT, afterInfoY, MARGIN_LEFT + workingWidth, afterInfoY, COL_LINE, 0.5f)
-        
+
         return afterInfoY + GAP_BEFORE_TABLE
     }
 
@@ -220,23 +239,49 @@ object PdfReportGenerator {
         val bot = startY + HEAD_H
         val pTeal = Paint().apply { color = COL_HEADER_BG }
         val pLighterTeal = Paint().apply { color = COL_HEADER_EVENING }
-        
+
         // Zone 1: Date
         c.drawRect(MARGIN_LEFT, startY, MARGIN_LEFT + C_DATE, bot, pTeal)
         // Zone 2: Morning
         c.drawRect(MARGIN_LEFT + C_DATE, startY, MARGIN_LEFT + C_DATE + C_MAD + C_MHR, bot, pTeal)
         // Zone 3: Evening
-        c.drawRect(MARGIN_LEFT + C_DATE + C_MAD + C_MHR, startY, MARGIN_LEFT + C_DATE + C_MAD + C_MHR + C_EAD + C_EHR, bot, pLighterTeal)
+        c.drawRect(
+            MARGIN_LEFT + C_DATE + C_MAD + C_MHR,
+            startY,
+            MARGIN_LEFT + C_DATE + C_MAD + C_MHR + C_EAD + C_EHR,
+            bot,
+            pLighterTeal
+        )
         // Zone 4: Note
-        c.drawRect(MARGIN_LEFT + C_DATE + C_MAD + C_MHR + C_EAD + C_EHR, startY, MARGIN_LEFT + workingWidth, bot, pTeal)
+        c.drawRect(
+            MARGIN_LEFT + C_DATE + C_MAD + C_MHR + C_EAD + C_EHR,
+            startY,
+            MARGIN_LEFT + workingWidth,
+            bot,
+            pTeal
+        )
 
         val hp = paint(8f, Color.WHITE, bold = true)
         val up = paint(6.8f, Color.argb(216, 255, 255, 255))
-        
+
         val heads = if (isRu) {
-            listOf("Дата", "Утро АД\nмм рт.ст.", "Утро ЧСС\nуд/мин", "Вечер АД\nмм рт.ст.", "Вечер ЧСС\nуд/мин", "Примечание")
+            listOf(
+                "Дата",
+                "Утро АД\nмм рт.ст.",
+                "Утро ЧСС\nуд/мин",
+                "Вечер АД\nмм рт.ст.",
+                "Вечер ЧСС\nуд/мин",
+                "Примечание"
+            )
         } else {
-            listOf("Date", "Morning BP\nmmHg", "Morning HR\nbpm", "Evening BP\nmmHg", "Evening HR\nbpm", "Note")
+            listOf(
+                "Date",
+                "Morning BP\nmmHg",
+                "Morning HR\nbpm",
+                "Evening BP\nmmHg",
+                "Evening HR\nbpm",
+                "Note"
+            )
         }
         val widths = listOf(C_DATE, C_MAD, C_MHR, C_EAD, C_EHR, C_NOTE)
 
@@ -244,17 +289,24 @@ object PdfReportGenerator {
         for (i in heads.indices) {
             val parts = heads[i].split("\n")
             if (parts.size > 1) {
-                val h1 = 10f; val h2 = 8f; val spacing = 2f
+                val h1 = 10f
+                val h2 = 8f
+                val spacing = 2f
                 val totalH = h1 + h2 + spacing
                 val topY = startY + (HEAD_H - totalH) / 2f
-                
+
                 val tw1 = hp.measureText(parts[0])
                 c.drawText(parts[0], x + (widths[i] - tw1) / 2f, topY + h1, hp)
                 val tw2 = up.measureText(parts[1])
                 c.drawText(parts[1], x + (widths[i] - tw2) / 2f, topY + h1 + spacing + h2, up)
             } else {
                 val tw = hp.measureText(heads[i])
-                c.drawText(heads[i], x + (widths[i] - tw) / 2f, startY + HEAD_H / 2f + 4f, hp)
+                c.drawText(
+                    heads[i],
+                    x + (widths[i] - tw) / 2f,
+                    startY + HEAD_H / 2f + 4f,
+                    hp
+                )
             }
             x += widths[i]
         }
@@ -265,49 +317,93 @@ object PdfReportGenerator {
         val expandedRow = !row.medication.isNullOrBlank() || !row.wellbeing.isNullOrBlank()
         val currentH = if (expandedRow) ROW_H_EXPANDED else ROW_H
         val rowBgColor = if (even) COL_ROW_EVEN else COL_ROW_ODD
-        c.drawRect(MARGIN_LEFT, startY, MARGIN_LEFT + workingWidth, startY + currentH, Paint().apply { color = rowBgColor })
-        
+        c.drawRect(
+            MARGIN_LEFT,
+            startY,
+            MARGIN_LEFT + workingWidth,
+            startY + currentH,
+            Paint().apply { color = rowBgColor })
         // Date column tint
-        c.drawRect(MARGIN_LEFT, startY, MARGIN_LEFT + C_DATE, startY + currentH, Paint().apply { color = COL_DATE_TINT })
+        c.drawRect(
+            MARGIN_LEFT,
+            startY,
+            MARGIN_LEFT + C_DATE,
+            startY + currentH,
+            Paint().apply { color = COL_DATE_TINT })
 
         val widths = listOf(C_DATE, C_MAD, C_MHR, C_EAD, C_EHR, C_NOTE)
         val rowCenterY = startY + currentH / 2f
 
         fun adColor(ad: String?): Int {
             if (ad == null) return COL_EMPTY
-            val clean = ad.removePrefix("▲"); val parts = clean.split("/")
-            val s = parts.getOrNull(0)?.toIntOrNull() ?: 0; val d = parts.getOrNull(1)?.toIntOrNull() ?: 0
-            return when { s >= THRESHOLD_SYSTOLIC -> COL_HIGH_SYST; d >= THRESHOLD_DIASTOLIC -> COL_HIGH_DIAS; else -> COL_TEXT }
+            val clean = ad.removePrefix("▲")
+            val parts = clean.split("/")
+            val s = parts.getOrNull(0)?.toIntOrNull() ?: 0
+            val d = parts.getOrNull(1)?.toIntOrNull() ?: 0
+            return when {
+                s >= THRESHOLD_SYSTOLIC -> COL_HIGH_SYST
+                d >= THRESHOLD_DIASTOLIC -> COL_HIGH_DIAS
+                else -> COL_TEXT
+            }
         }
+
         fun formatAd(ad: String?): String {
             if (ad == null) return "—"
-            val p = ad.split("/"); val s = p.getOrNull(0)?.toIntOrNull() ?: 0; val d = p.getOrNull(1)?.toIntOrNull() ?: 0
+            val p = ad.split("/")
+            val s = p.getOrNull(0)?.toIntOrNull() ?: 0
+            val d = p.getOrNull(1)?.toIntOrNull() ?: 0
             return if (s >= THRESHOLD_SYSTOLIC || d >= THRESHOLD_DIASTOLIC) "▲$ad" else ad
         }
 
-        val values = listOf(dateFmt.format(Date(row.date)), formatAd(row.morningAd), row.morningHr?.toString() ?: "—", formatAd(row.eveningAd), row.eveningHr?.toString() ?: "—")
+        val values = listOf(
+            dateFmt.format(Date(row.date)),
+            formatAd(row.morningAd),
+            row.morningHr?.toString() ?: "—",
+            formatAd(row.eveningAd),
+            row.eveningHr?.toString() ?: "—"
+        )
         val times = listOf(null, row.morningTime, null, row.eveningTime, null)
-        val colors = listOf(COL_TEXT, adColor(values[1]), if (row.morningHr == null) COL_EMPTY else COL_TEXT, adColor(values[3]), if (row.eveningHr == null) COL_EMPTY else COL_TEXT)
+        val colors = listOf(
+            COL_TEXT,
+            adColor(values[1]),
+            if (row.morningHr == null) COL_EMPTY else COL_TEXT,
+            adColor(values[3]),
+            if (row.eveningHr == null) COL_EMPTY else COL_TEXT
+        )
         val isBold = listOf(false, true, false, true, false)
 
         var x = MARGIN_LEFT
         for (i in 0..4) {
             val tp = paint(9f, colors[i], bold = isBold[i])
-            var txt = values[i]; val maxW = widths[i] - 4f
+            var txt = values[i]
+            val maxW = widths[i] - 4f
             if (tp.measureText(txt) > maxW) {
-                while (txt.isNotEmpty() && tp.measureText("$txt…") > maxW) txt = txt.dropLast(1)
+                while (txt.isNotEmpty() && tp.measureText("$txt…") > maxW) {
+                    txt = txt.dropLast(1)
+                }
                 txt = "$txt…"
             }
-            
+
             if (i in 1..4 && times[i] != null && values[i] != "—") {
-                c.drawText(txt, x + (widths[i] - tp.measureText(txt)) / 2f, rowCenterY - 4f, tp)
+                c.drawText(
+                    txt,
+                    x + (widths[i] - tp.measureText(txt)) / 2f,
+                    rowCenterY - 4f,
+                    tp
+                )
                 val tTp = paint(7f, COL_MUTED)
-                c.drawText(times[i]!!, x + (widths[i] - tTp.measureText(times[i]!!)) / 2f, rowCenterY + 6f, tTp)
+                c.drawText(
+                    times[i]!!,
+                    x + (widths[i] - tTp.measureText(times[i]!!)) / 2f,
+                    rowCenterY + 6f,
+                    tTp
+                )
             } else {
                 if (i == 0) {
                     // Date column: date on top, day-of-week below
                     val dowFmt = java.text.SimpleDateFormat("EEE", java.util.Locale("ru"))
-                    val dow = dowFmt.format(java.util.Date(row.date)).replaceFirstChar { it.uppercase() }
+                    val dow = dowFmt.format(java.util.Date(row.date))
+                        .replaceFirstChar { it.uppercase() }
                     val dateTp = paint(9f, COL_TEXT)
                     val dowTp = paint(7f, COL_MUTED)
                     val dateX = x + (widths[i] - dateTp.measureText(txt)) / 2f
@@ -326,7 +422,7 @@ object PdfReportGenerator {
         val eveningStart = MARGIN_LEFT + C_DATE + C_MAD + C_MHR
         val noteStart = MARGIN_LEFT + C_DATE + C_MAD + C_MHR + C_EAD + C_EHR
         val divColor = Color.argb(38, 0, 0, 0) // Subtle 15% black separator
-        
+
         // Visual grouping borders
         drawLine(c, eveningStart, startY, eveningStart, startY + currentH, divColor, 1f)
         drawLine(c, noteStart, startY, noteStart, startY + currentH, divColor, 1f)
@@ -341,24 +437,43 @@ object PdfReportGenerator {
         val noteStartY = startY + (currentH - totalNoteH) / 2f + 7.5f
 
         noteLines.forEachIndexed { idx, txt ->
-            val lY = noteStartY + (idx * lineH); val tp = if (idx == 0 && !row.note.isNullOrBlank()) paint(9f, COL_MUTED) else paint(7f, COL_MUTED)
-            var t = txt; val maxW = widths[5] - 16f // 10f left + 6f right padding
+            val lY = noteStartY + (idx * lineH)
+            val tp =
+                if (idx == 0 && !row.note.isNullOrBlank()) paint(9f, COL_MUTED) else paint(7f, COL_MUTED)
+            var t = txt
+            val maxW = widths[5] - 16f // 10f left + 6f right padding
             if (tp.measureText(t) > maxW) {
-                while (t.isNotEmpty() && tp.measureText("$t…") > maxW) t = t.dropLast(1)
+                while (t.isNotEmpty() && tp.measureText("$t…") > maxW) {
+                    t = t.dropLast(1)
+                }
                 t = "$t…"
             }
             c.drawText(t, noteStart + 10f, lY, tp)
         }
-        drawLine(c, MARGIN_LEFT, startY + currentH, MARGIN_LEFT + workingWidth, startY + currentH, COL_LINE, 0.3f)
+        drawLine(
+            c,
+            MARGIN_LEFT,
+            startY + currentH,
+            MARGIN_LEFT + workingWidth,
+            startY + currentH,
+            COL_LINE,
+            0.3f
+        )
         return startY + currentH
     }
 
-    private fun drawSummary(c: Canvas, p: PatientInfo, rows: List<MeasurementRow>, y: Float, isRu: Boolean) {
+    private fun drawSummary(
+        c: Canvas,
+        p: PatientInfo,
+        rows: List<MeasurementRow>,
+        y: Float,
+        isRu: Boolean
+    ) {
         // Typography: COL_TEXT for labels, COL_MUTED for units/secondary, bold for values
         val paintLabel = paint(8f, COL_TEXT)
         val paintValue = paint(9f, COL_TEXT, bold = true)
         val paintMuted = paint(7.5f, COL_MUTED)
-        val paintHead  = paint(7.5f, COL_MUTED)
+        val paintHead = paint(7.5f, COL_MUTED)
 
         fun parse(ad: String?): Pair<Int, Int>? {
             if (ad == null || ad == "—") return null
@@ -419,7 +534,14 @@ object PdfReportGenerator {
         val y2 = y1 + LINE_H
         val y3 = y2 + LINE_H
 
-        fun drawDataRow(rowY: Float, label: String, vM: String, vE: String, vT: String, vColor: Int = COL_TEXT) {
+        fun drawDataRow(
+            rowY: Float,
+            label: String,
+            vM: String,
+            vE: String,
+            vT: String,
+            vColor: Int = COL_TEXT
+        ) {
             c.drawText(label, MARGIN_LEFT, rowY, paintLabel)
             val vp = paint(9f, vColor, bold = true)
             c.drawText(vM, xM - vp.measureText(vM) / 2f, rowY, vp)
@@ -444,16 +566,28 @@ object PdfReportGenerator {
 
         var elevated = 0
         rows.forEach { row ->
-            parse(row.morningAd)?.let { if (it.first >= THRESHOLD_SYSTOLIC || it.second >= THRESHOLD_DIASTOLIC) elevated++ }
-            parse(row.eveningAd)?.let { if (it.first >= THRESHOLD_SYSTOLIC || it.second >= THRESHOLD_DIASTOLIC) elevated++ }
+            parse(row.morningAd)?.let {
+                if (it.first >= THRESHOLD_SYSTOLIC || it.second >= THRESHOLD_DIASTOLIC) elevated++
+            }
+            parse(row.eveningAd)?.let {
+                if (it.first >= THRESHOLD_SYSTOLIC || it.second >= THRESHOLD_DIASTOLIC) elevated++
+            }
         }
         val totalM = (mS.size + eS.size).coerceAtLeast(1)
         val percent = (elevated * 100) / totalM
         val elevY = statsY + LINE_H
-        val eTxt = if (isRu) "Превышений порога (≥ $THRESHOLD_SYSTOLIC или ≥ $THRESHOLD_DIASTOLIC): " else "Elevated readings (≥ $THRESHOLD_SYSTOLIC or ≥ $THRESHOLD_DIASTOLIC): "
-        val eVal  = if (isRu) "$elevated из $totalM ($percent%)" else "$elevated of $totalM ($percent%)"
+        val eTxt = if (isRu)
+            "Измерений выше справочного порога домашнего АД (≥ $THRESHOLD_SYSTOLIC и/или ≥ $THRESHOLD_DIASTOLIC): "
+        else
+            "Readings above the home BP reference threshold (≥ $THRESHOLD_SYSTOLIC and/or ≥ $THRESHOLD_DIASTOLIC): "
+        val eVal = if (isRu) "$elevated из $totalM ($percent%)" else "$elevated of $totalM ($percent%)"
         c.drawText(eTxt, MARGIN_LEFT, elevY, paintLabel)
-        c.drawText(eVal, MARGIN_LEFT + paintLabel.measureText(eTxt), elevY, paint(8f, COL_TEXT, bold = true))
+        c.drawText(
+            eVal,
+            MARGIN_LEFT + paintLabel.measureText(eTxt),
+            elevY,
+            paint(8f, COL_TEXT, bold = true)
+        )
 
         // ── Legend ─────────────────────────────────────────────────────────────
         val legHeaderY = elevY + LINE_H + 4f
@@ -462,23 +596,37 @@ object PdfReportGenerator {
         val legY = legHeaderY + LINE_H
         val dotR = 2.5f
 
-        c.drawCircle(MARGIN_LEFT + dotR + 1f, legY - dotR - 1f, dotR,
-            Paint().apply { color = COL_HIGH_SYST; isAntiAlias = true })
-        val sysTxt = if (isRu) "— систола ≥ $THRESHOLD_SYSTOLIC мм рт.ст." else "— systolic BP ≥ $THRESHOLD_SYSTOLIC mmHg"
+        c.drawCircle(
+            MARGIN_LEFT + dotR + 1f,
+            legY - dotR - 1f,
+            dotR,
+            Paint().apply { color = COL_HIGH_SYST; isAntiAlias = true }
+        )
+        val sysTxt = if (isRu)
+            "— систола ≥ $THRESHOLD_SYSTOLIC мм рт.ст."
+        else
+            "— systolic BP ≥ $THRESHOLD_SYSTOLIC mmHg"
         c.drawText(sysTxt, MARGIN_LEFT + dotR * 2 + 5f, legY, paintMuted)
 
         val sysBlockW = dotR * 2 + 5f + paint(7.5f, COL_MUTED).measureText(sysTxt) + 16f
         val dot2X = MARGIN_LEFT + sysBlockW + dotR + 1f
-        c.drawCircle(dot2X, legY - dotR - 1f, dotR,
-            Paint().apply { color = COL_HIGH_DIAS; isAntiAlias = true })
-        val diaTxt = if (isRu) "— диастола ≥ $THRESHOLD_DIASTOLIC мм рт.ст." else "— diastolic BP ≥ $THRESHOLD_DIASTOLIC mmHg"
+        c.drawCircle(
+            dot2X,
+            legY - dotR - 1f,
+            dotR,
+            Paint().apply { color = COL_HIGH_DIAS; isAntiAlias = true }
+        )
+        val diaTxt = if (isRu)
+            "— диастола ≥ $THRESHOLD_DIASTOLIC мм рт.ст."
+        else
+            "— diastolic BP ≥ $THRESHOLD_DIASTOLIC mmHg"
         c.drawText(diaTxt, dot2X + dotR + 4f, legY, paintMuted)
 
         // ── Footnote ───────────────────────────────────────────────────────────
         val footTxt = if (isRu)
-            "* Пороговые значения для домашнего мониторинга АД согласно КР МЗ РФ по АГ (2024) и рекомендациям ESC (2024)"
+            "* Для домашнего мониторинга в отчёте использован справочный порог ≥135/85 мм рт.ст. в соответствии с клиническими рекомендациями по артериальной гипертензии (РФ, 2024) и рекомендациями ESC (2024)."
         else
-            "* Thresholds for home BP monitoring per Russian Ministry of Health Hypertension Guidelines (2024) and ESC Guidelines (2024)"
+            "* For home blood pressure monitoring, this report uses the reference threshold of ≥135/85 mmHg in accordance with the 2024 Russian hypertension guidelines and the 2024 ESC guidelines."
         c.drawText(footTxt, MARGIN_LEFT, legY + LINE_H, paint(6.5f, COL_MUTED))
 
         // Total measurement count
@@ -497,28 +645,64 @@ object PdfReportGenerator {
         // Legal disclaimer
         val disclaimerY = countY + 10f
         val disclaimer = if (isRu)
-            "Документ сформирован на основе данных, введённых пользователем. Не является медицинским заключением."
+            "Документ сформирован на основе данных, введённых пользователем, и предназначен для передачи лечащему врачу. Отчёт не является медицинским заключением и не предназначен для самостоятельной постановки диагноза или выбора лечения."
         else
-            "This document is generated from user-entered data. It does not constitute a medical report."
+            "This document is generated from user-entered data and is intended for review by the treating physician. It is not a medical conclusion and is not intended for self-diagnosis or treatment decisions."
         c.drawText(disclaimer, MARGIN_LEFT, disclaimerY, paint(6.5f, COL_MUTED))
     }
 
     private fun drawPageFooter(c: Canvas, num: Int) {
-        val txt = "CardioLog  ·  $num"; val fp = paint(7f, COL_MUTED)
+        val txt = "CardioLog  ·  $num"
+        val fp = paint(7f, COL_MUTED)
         drawLine(c, MARGIN_LEFT, PH - 28f, MARGIN_LEFT + workingWidth, PH - 28f, COL_LINE, 0.5f)
         c.drawText(txt, (PW - fp.measureText(txt)) / 2f, PH - 16f, fp)
     }
 
-    private fun drawLine(c: Canvas, x1: Float, y1: Float, x2: Float, y2: Float, color: Int, w: Float) {
-        c.drawLine(x1, y1, x2, y2, Paint().apply { this.color = color; strokeWidth = w; style = Paint.Style.STROKE })
+    private fun drawLine(
+        c: Canvas,
+        x1: Float,
+        y1: Float,
+        x2: Float,
+        y2: Float,
+        color: Int,
+        w: Float
+    ) {
+        c.drawLine(
+            x1,
+            y1,
+            x2,
+            y2,
+            Paint().apply {
+                this.color = color
+                strokeWidth = w
+                style = Paint.Style.STROKE
+            }
+        )
     }
 
     private fun paint(size: Float, color: Int, bold: Boolean = false) = Paint().apply {
-        textSize = size; this.color = color; typeface = if (bold) typefaceBold ?: Typeface.DEFAULT_BOLD else typefaceRegular ?: Typeface.DEFAULT; isAntiAlias = true
+        textSize = size
+        this.color = color
+        typeface = if (bold) typefaceBold ?: Typeface.DEFAULT_BOLD
+        else typefaceRegular ?: Typeface.DEFAULT
+        isAntiAlias = true
     }
 
     private fun transliterate(input: String): String {
-        val map = mapOf('А' to "A", 'Б' to "B", 'В' to "V", 'Г' to "G", 'Д' to "D", 'Е' to "E", 'Ё' to "E", 'Ж' to "Zh", 'З' to "Z", 'И' to "I", 'Й' to "Y", 'К' to "K", 'Л' to "L", 'М' to "M", 'Н' to "N", 'О' to "O", 'П' to "P", 'Р' to "R", 'С' to "S", 'Т' to "T", 'У' to "U", 'Ф' to "F", 'Х' to "Kh", 'Ц' to "Ts", 'Ч' to "Ch", 'Ш' to "Sh", 'Щ' to "Sch", 'Ъ' to "", 'Ы' to "Y", 'Ь' to "", 'Э' to "E", 'Ю' to "Yu", 'Я' to "Ya", 'а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'е' to "e", 'ё' to "e", 'ж' to "zh", 'з' to "z", 'и' to "i", 'й' to "y", 'к' to "k", 'л' to "l", 'м' to "m", 'н' to "n", 'о' to "o", 'п' to "p", 'р' to "r", 'с' to "s", 'т' to "t", 'у' to "u", 'ф' to "f", 'х' to "kh", 'ц' to "ts", 'ч' to "ch", 'ш' to "sh", 'щ' to "sch", 'ъ' to "", 'ы' to "y", 'ь' to "", 'э' to "e", 'ю' to "yu", 'я' to "ya")
+        val map = mapOf(
+            'А' to "A", 'Б' to "B", 'В' to "V", 'Г' to "G", 'Д' to "D", 'Е' to "E",
+            'Ё' to "E", 'Ж' to "Zh", 'З' to "Z", 'И' to "I", 'Й' to "Y", 'К' to "K",
+            'Л' to "L", 'М' to "M", 'Н' to "N", 'О' to "O", 'П' to "P", 'Р' to "R",
+            'С' to "S", 'Т' to "T", 'У' to "U", 'Ф' to "F", 'Х' to "Kh", 'Ц' to "Ts",
+            'Ч' to "Ch", 'Ш' to "Sh", 'Щ' to "Sch", 'Ъ' to "", 'Ы' to "Y", 'Ь' to "",
+            'Э' to "E", 'Ю' to "Yu", 'Я' to "Ya",
+            'а' to "a", 'б' to "b", 'в' to "v", 'г' to "g", 'д' to "d", 'е' to "e",
+            'ё' to "e", 'ж' to "zh", 'з' to "z", 'и' to "i", 'й' to "y", 'к' to "k",
+            'л' to "l", 'м' to "m", 'н' to "n", 'о' to "o", 'п' to "p", 'р' to "r",
+            'с' to "s", 'т' to "t", 'у' to "u", 'ф' to "f", 'х' to "kh", 'ц' to "ts",
+            'ч' to "ch", 'ш' to "sh", 'щ' to "sch", 'ъ' to "", 'ы' to "y", 'ь' to "",
+            'э' to "e", 'ю' to "yu", 'я' to "ya"
+        )
         return input.map { map[it] ?: it.toString() }.joinToString("")
     }
 

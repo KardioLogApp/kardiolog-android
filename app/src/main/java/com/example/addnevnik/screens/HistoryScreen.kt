@@ -51,7 +51,6 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
@@ -65,11 +64,11 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.addnevnik.data.local.BloodPressureEntity
 import com.example.addnevnik.data.local.DailyNoteEntity
+import com.example.addnevnik.domain.BpClassifier
 import com.example.addnevnik.domain.BpStats
 import com.example.addnevnik.util.MeasurementRow
 import com.example.addnevnik.util.PatientInfo
 import com.example.addnevnik.util.PdfReportGenerator
-import com.example.addnevnik.util.PressureUtils
 import com.example.addnevnik.viewmodel.HomeViewModel
 import com.example.addnevnik.viewmodel.SettingsViewModel
 import kotlinx.coroutines.delay
@@ -246,6 +245,12 @@ fun HistoryScreen(viewModel: HomeViewModel, settingsViewModel: SettingsViewModel
                                     calendar.get(Calendar.HOUR_OF_DAY) in 18..23
                                 }.let { list -> list.find { it.isPrimary } ?: list.firstOrNull() }
 
+                                val allOtherCount = entries.count {
+                                    calendar.timeInMillis = it.timestamp_ms
+                                    val hour = calendar.get(Calendar.HOUR_OF_DAY)
+                                    hour !in 6..10 && hour !in 18..23
+                                }
+
                                 val dailyNoteKey = dateKeyFmt.format(Date(dateMs))
                                 val dailyNote = allDailyNotes.find { it.dateKey == dailyNoteKey }
 
@@ -260,7 +265,8 @@ fun HistoryScreen(viewModel: HomeViewModel, settingsViewModel: SettingsViewModel
                                     note = listOfNotNull(morningEntry?.tag, eveningEntry?.tag)
                                         .firstOrNull { it.isNotBlank() },
                                     medication = dailyNote?.medication,
-                                    wellbeing = dailyNote?.wellbeing
+                                    wellbeing = dailyNote?.wellbeing,
+                                    outOfRangeCount = allOtherCount
                                 )
                             }.sortedByDescending { it.date }
 
@@ -340,7 +346,9 @@ private fun HistoryItem(
     allDailyNotes: List<DailyNoteEntity>
 ) {
     val dateFmt = remember { SimpleDateFormat("dd MMMM, HH:mm", Locale("ru")) }
-    val pressureColor = PressureUtils.getPressureColor(entry.systolic, entry.diastolic)
+    val category = remember(entry.systolic, entry.diastolic) {
+        BpClassifier.classify(entry.systolic, entry.diastolic)
+    }
 
     val dateKeyFmt = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()) }
     val entryDateKey = dateKeyFmt.format(Date(entry.timestamp_ms))
@@ -374,7 +382,7 @@ private fun HistoryItem(
                     Icon(
                         imageVector = Icons.Default.Star,
                         contentDescription = null,
-                        tint = Color(0xFFFFB300),
+                        tint = androidx.compose.ui.graphics.Color(0xFFFFB300),
                         modifier = Modifier.size(18.dp)
                     )
                 }
@@ -387,7 +395,7 @@ private fun HistoryItem(
                     text = "${entry.systolic}/${entry.diastolic}",
                     style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
-                    color = if (pressureColor == Color(0xFF388E3C)) MaterialTheme.colorScheme.onSurface else pressureColor
+                    color = category.color
                 )
 
                 Spacer(modifier = Modifier.width(16.dp))
@@ -396,6 +404,22 @@ private fun HistoryItem(
                     text = "❤️ ${entry.pulse}",
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Surface(
+                color = category.color.copy(alpha = 0.12f),
+                shape = RoundedCornerShape(8.dp),
+                border = androidx.compose.foundation.BorderStroke(1.dp, category.color.copy(alpha = 0.45f))
+            ) {
+                Text(
+                    text = category.shortLabel,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = category.color,
+                    fontWeight = FontWeight.Bold
                 )
             }
 
@@ -418,7 +442,7 @@ private fun HistoryItem(
 
                 if (dailyNote.medication.isNotBlank()) {
                     Text(
-                        text = "💊 Препараты: ${dailyNote.medication}",
+                        text = "Доп. препарат: ${dailyNote.medication}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -427,7 +451,7 @@ private fun HistoryItem(
                 if (dailyNote.wellbeing.isNotBlank()) {
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "📝 Заметка: ${dailyNote.wellbeing}",
+                        text = "Самочувствие: ${dailyNote.wellbeing}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -643,24 +667,20 @@ private fun MeasurementInfo(entries: List<BloodPressureEntity>) {
     }
 
     val primary = entries.find { it.isPrimary } ?: entries.first()
-    val pressureColor = PressureUtils.getPressureColor(primary.systolic, primary.diastolic)
+    val category = BpClassifier.classify(primary.systolic, primary.diastolic)
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = "АД: ${primary.systolic}/${primary.diastolic}",
             fontSize = 14.sp,
-            color = if (pressureColor == Color(0xFF388E3C)) {
-                MaterialTheme.colorScheme.onSurface
-            } else {
-                pressureColor
-            },
-            fontWeight = if (pressureColor != Color(0xFF388E3C)) FontWeight.Bold else FontWeight.Medium
+            color = category.color,
+            fontWeight = FontWeight.Bold
         )
         if (primary.isPrimary) {
             Text(
                 text = " ★",
                 fontSize = 11.sp,
-                color = Color(0xFFFFB300)
+                color = androidx.compose.ui.graphics.Color(0xFFFFB300)
             )
         }
         if (primary.isManual) {
@@ -671,6 +691,16 @@ private fun MeasurementInfo(entries: List<BloodPressureEntity>) {
             )
         }
     }
+
+    Spacer(modifier = Modifier.height(2.dp))
+
+    Text(
+        text = category.shortLabel,
+        fontSize = 12.sp,
+        color = category.color,
+        fontWeight = FontWeight.Medium,
+        lineHeight = 16.sp
+    )
 
     Spacer(modifier = Modifier.height(2.dp))
 
@@ -824,6 +854,9 @@ private fun DeleteConfirmationDialog(
     onDismiss: () -> Unit
 ) {
     val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+    val category = remember(entry.systolic, entry.diastolic) {
+        BpClassifier.classify(entry.systolic, entry.diastolic)
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -842,27 +875,37 @@ private fun DeleteConfirmationDialog(
                     shape = RoundedCornerShape(8.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = timeFormat.format(Date(entry.timestamp_ms)),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 16.sp
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "${entry.systolic}/${entry.diastolic}",
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = category.color
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "❤️ ${entry.pulse}",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 16.sp
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
+
                         Text(
-                            text = timeFormat.format(Date(entry.timestamp_ms)),
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Text(
-                            text = "${entry.systolic}/${entry.diastolic}",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = PressureUtils.getPressureColor(entry.systolic, entry.diastolic)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "❤️ ${entry.pulse}",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 16.sp
+                            text = category.shortLabel,
+                            color = category.color,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium
                         )
                     }
                 }
@@ -922,6 +965,9 @@ private fun EntryRow(
     val offsetX = remember { Animatable(0f) }
     val maxDrag = with(density) { 80.dp.toPx() }
     val scope = rememberCoroutineScope()
+    val category = remember(entry.systolic, entry.diastolic) {
+        BpClassifier.classify(entry.systolic, entry.diastolic)
+    }
 
     Box(
         modifier = Modifier
@@ -988,15 +1034,10 @@ private fun EntryRow(
 
                     Spacer(modifier = Modifier.width(8.dp))
 
-                    val pressureColor = PressureUtils.getPressureColor(entry.systolic, entry.diastolic)
                     Text(
                         text = "${entry.systolic}/${entry.diastolic}",
-                        color = if (pressureColor == Color(0xFF388E3C)) {
-                            MaterialTheme.colorScheme.onSurface
-                        } else {
-                            pressureColor
-                        },
-                        fontWeight = if (pressureColor != Color(0xFF388E3C)) FontWeight.Bold else FontWeight.Medium,
+                        color = category.color,
+                        fontWeight = FontWeight.Bold,
                         fontSize = 17.sp
                     )
 
@@ -1008,6 +1049,16 @@ private fun EntryRow(
                         color = MaterialTheme.colorScheme.onSurface
                     )
                 }
+
+                Spacer(modifier = Modifier.height(2.dp))
+
+                Text(
+                    text = category.shortLabel,
+                    fontSize = 13.sp,
+                    color = category.color,
+                    lineHeight = 18.sp,
+                    fontWeight = FontWeight.Medium
+                )
 
                 if (!entry.tag.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(2.dp))
@@ -1028,7 +1079,8 @@ private fun EntryRow(
                     Icon(
                         imageVector = if (isPrimaryOptimistic) Icons.Filled.Star else Icons.Outlined.StarBorder,
                         contentDescription = "Основной",
-                        tint = if (isPrimaryOptimistic) Color(0xFFFFB300) else MaterialTheme.colorScheme.onSurfaceVariant,
+                        tint = if (isPrimaryOptimistic) androidx.compose.ui.graphics.Color(0xFFFFB300)
+                        else MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -1255,4 +1307,3 @@ private fun StatColumn(label: String, value: String) {
         )
     }
 }
-

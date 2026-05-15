@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.addnevnik.data.local.BloodPressureEntity
+import com.example.addnevnik.data.local.DailyNoteEntity
+import com.example.addnevnik.domain.BpClassifier
 import com.example.addnevnik.ui.dialogs.AddPressureDialog
 import com.example.addnevnik.viewmodel.HomeViewModel
 import java.text.SimpleDateFormat
@@ -73,7 +75,6 @@ fun HomeScreen(
             contentPadding = PaddingValues(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // 2) Карточка "Последний замер"
             item {
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth(),
@@ -99,6 +100,11 @@ fun HomeScreen(
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         } else {
+                            val category = BpClassifier.classify(
+                                systolic = latestPressure!!.systolic,
+                                diastolic = latestPressure!!.diastolic
+                            )
+
                             Spacer(modifier = Modifier.height(8.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -111,6 +117,7 @@ fun HomeScreen(
                                     fontWeight = FontWeight.Bold,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
+
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text(
                                         text = "Пульс: ${latestPressure!!.pulse}",
@@ -119,10 +126,22 @@ fun HomeScreen(
                                         color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Spacer(modifier = Modifier.height(4.dp))
-                                    StatusChip(latestPressure!!.systolic, latestPressure!!.diastolic)
+                                    StatusChip(
+                                        systolic = latestPressure!!.systolic,
+                                        diastolic = latestPressure!!.diastolic
+                                    )
                                 }
                             }
-                            Spacer(modifier = Modifier.height(12.dp))
+
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = category.shortLabel,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = category.color,
+                                fontWeight = FontWeight.SemiBold
+                            )
+
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = formatTimestamp(latestPressure!!.timestamp_ms),
                                 style = MaterialTheme.typography.bodySmall,
@@ -133,7 +152,6 @@ fun HomeScreen(
                 }
             }
 
-            // 3) Кнопка "Добавить замер"
             item {
                 Button(
                     onClick = { viewModel.onActionClick("pressure") },
@@ -151,7 +169,6 @@ fun HomeScreen(
                 }
             }
 
-            // 4) Кнопка "Распознать по фото"
             item {
                 OutlinedButton(
                     onClick = onScanRequest,
@@ -171,7 +188,6 @@ fun HomeScreen(
                 }
             }
 
-            // 5) Подзаголовок "Последние записи"
             item {
                 Text(
                     text = "Последние записи",
@@ -182,7 +198,6 @@ fun HomeScreen(
                 )
             }
 
-            // 6) Список последних 3 замеров
             val lastEntries = allPressure.take(3)
             if (lastEntries.isEmpty() && latestPressure == null) {
                 item {
@@ -195,64 +210,13 @@ fun HomeScreen(
                 }
             } else {
                 items(lastEntries) { entry ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                        )
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .padding(16.dp)
-                                .fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "${entry.systolic} / ${entry.diastolic}",
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                if (!entry.tag.isNullOrBlank()) {
-                                    Text(
-                                        text = entry.tag,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontSize = 11.sp
-                                    )
-                                }
-                                val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(entry.timestamp_ms))
-                                val dailyNote = allDailyNotes.find { it.dateKey == dateKey }
-                                if (dailyNote != null && dailyNote.medication.isNotBlank()) {
-                                    Text(
-                                        text = "Доп. препарат: ${dailyNote.medication}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        fontSize = 11.sp
-                                    )
-                                }
-                            }
-                            Column(horizontalAlignment = Alignment.End) {
-                                Text(
-                                    text = "❤️ ${entry.pulse}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = formatTimestampShort(entry.timestamp_ms),
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-                    }
+                    LastEntryCard(
+                        entry = entry,
+                        allDailyNotes = allDailyNotes
+                    )
                 }
             }
 
-            // 7) Кнопка "Смотреть всю историю"
             item {
                 TextButton(
                     onClick = onShowChart,
@@ -266,24 +230,105 @@ fun HomeScreen(
 }
 
 @Composable
-private fun StatusChip(systolic: Int, diastolic: Int) {
-    val (status, color) = when {
-        systolic < 90 || diastolic < 60 -> "Низкое" to MaterialTheme.colorScheme.secondary
-        systolic <= 120 && diastolic <= 80 -> "Норма" to Color(0xFF00796B)
-        systolic <= 140 && diastolic <= 90 -> "Повышенное" to Color(0xFFB45309)
-        else -> "Высокое" to Color(0xFFB91C1C)
+private fun LastEntryCard(
+    entry: BloodPressureEntity,
+    allDailyNotes: List<DailyNoteEntity>
+) {
+    val category = BpClassifier.classify(entry.systolic, entry.diastolic)
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = "${entry.systolic} / ${entry.diastolic}",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                Surface(
+                    color = category.color.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, category.color.copy(alpha = 0.45f))
+                ) {
+                    Text(
+                        text = category.shortLabel,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = category.color,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                if (!entry.tag.isNullOrBlank()) {
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = entry.tag,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontSize = 11.sp
+                    )
+                }
+
+                val dateKey = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                    .format(Date(entry.timestamp_ms))
+                val dailyNote = allDailyNotes.find { it.dateKey == dateKey }
+
+                if (dailyNote != null && dailyNote.medication.isNotBlank()) {
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Доп. препарат: ${dailyNote.medication}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            Column(horizontalAlignment = Alignment.End) {
+                Text(
+                    text = "❤️ ${entry.pulse}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = formatTimestampShort(entry.timestamp_ms),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
     }
+}
+
+@Composable
+private fun StatusChip(systolic: Int, diastolic: Int) {
+    val category = BpClassifier.classify(systolic, diastolic)
 
     Surface(
-        color = color.copy(alpha = 0.12f),
+        color = category.color.copy(alpha = 0.12f),
         shape = RoundedCornerShape(8.dp),
-        border = BorderStroke(1.dp, color.copy(alpha = 0.5f))
+        border = BorderStroke(1.dp, category.color.copy(alpha = 0.5f))
     ) {
         Text(
-            text = status,
+            text = category.shortLabel,
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelMedium,
-            color = color,
+            color = category.color,
             fontWeight = FontWeight.Bold
         )
     }
