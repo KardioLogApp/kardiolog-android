@@ -2,13 +2,19 @@ package com.example.addnevnik.ui.screens.scan
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.graphics.RectF
+import android.os.Handler
+import android.os.Looper
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.*
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.camera.view.PreviewView.ScaleType
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -19,16 +25,20 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.example.addnevnik.util.BpOcrParser
-import com.example.addnevnik.util.CameraOcrAnalyzer
+import com.example.addnevnik.util.BpOcrAnalyzer
+import org.opencv.android.OpenCVLoader
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
 @Composable
@@ -38,18 +48,34 @@ fun ScanScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
 
     var hasCameraPermission by remember {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.CAMERA
-            ) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
+                    == PackageManager.PERMISSION_GRANTED
         )
     }
-    var ocrResult by remember { mutableStateOf<BpOcrParser.OcrResult?>(null) }
+
+    var ocrResult by remember { mutableStateOf<ScanOcrResult?>(null) }
     var isScanning by remember { mutableStateOf(true) }
-    // Ручной ввод — открывается если пользователь нажал "Ввести вручную"
     var showManualForm by remember { mutableStateOf(false) }
+    var previewSize by remember { mutableStateOf(IntSize.Zero) }
+    var overlayRectPx by remember { mutableStateOf<Rect?>(null) }
+
+    // Refs для доступа из фонового потока без recompose
+    val isScanningRef = remember { mutableStateOf(true) }
+    val overlayRectRef = remember { mutableStateOf<Rect?>(null) }
+    val previewSizeRef = remember { mutableStateOf(IntSize.Zero) }
+    val analyzerRef = remember { mutableStateOf<BpOcrAnalyzer?>(null) }
+
+    // Синхронизируем refs при изменении state
+    LaunchedEffect(isScanning) { isScanningRef.value = isScanning }
+    LaunchedEffect(overlayRectPx) {
+        overlayRectRef.value = overlayRectPx
+        analyzerRef.value = null // сбросить analyzer при изменении rect
+    }
+    LaunchedEffect(previewSize) { previewSizeRef.value = previewSize }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -65,59 +91,159 @@ fun ScanScreen(
         if (!hasCameraPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
     }
 
-    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+    val executor: ExecutorService = remember { Executors.newSingleThreadExecutor() }
+    DisposableEffect(Unit) { onDispose { executor.shutdown() } }
 
-        // ── Камера ──────────────────────────────────────────────
-        if (hasCameraPermission && !showManualForm) {
-            val executor = remember { Executors.newSingleThreadExecutor() }
-            val cameraProviderFuture = remember { ProcessCameraProvider.getInstance(context) }
+    LaunchedEffect(Unit) {
+        try {
+            if (!OpenCVLoader.initDebug()) {
+                Log.e("ScanScreen", "OpenCV init failed")
+                Toast.makeText(context, "Не удалось инициализировать OpenCV", Toast.LENGTH_LONG).show()
+            }
+        } catch (e: Throwable) {
+            Log.e("ScanScreen", "OpenCV init exception", e)
+        }
+    }
 
-            AndroidView(
-                factory = { ctx ->
-                    val previewView = PreviewView(ctx)
-                    cameraProviderFuture.addListener({
-                        val cameraProvider = cameraProviderFuture.get()
-                        val preview = Preview.Builder().build().also {
-                            it.setSurfaceProvider(previewView.surfaceProvider)
+    // PreviewView создаётся один раз и сохраняется
+    val previewView = remember {
+        PreviewView(context).apply {
+            scaleType = ScaleType.FILL_CENTER
+            implementationMode = PreviewView.ImplementationMode.PERFORMANCE
+        }
+    }
+
+    // Камера привязывается ОДИН РАЗ через LaunchedEffect
+    LaunchedEffect(hasCameraPermission) {
+        if (!hasCameraPermission) return@LaunchedEffect
+
+        val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+        cameraProviderFuture.addListener({
+            try {
+                val cameraProvider = cameraProviderFuture.get()
+
+                val preview = Preview.Builder().build()
+                    .also { it.setSurfaceProvider(previewView.surfaceProvider) }
+
+                val imageAnalysis = ImageAnalysis.Builder()
+                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .build()
+
+                imageAnalysis.setAnalyzer(executor) { imageProxy ->
+                    try {
+                        val overlayRect = overlayRectRef.value
+                        val pSize = previewSizeRef.value
+
+                        if (!isScanningRef.value || overlayRect == null || pSize == IntSize.Zero) {
+                            imageProxy.close()
+                            return@setAnalyzer
                         }
-                        val analyzer = ImageAnalysis.Builder()
-                            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                            .build().also {
-                                it.setAnalyzer(executor, CameraOcrAnalyzer { result ->
-                                    if (isScanning) {
-                                        isScanning = false
-                                        ocrResult = result
-                                    }
-                                })
-                            }
-                        try {
-                            cameraProvider.unbindAll()
-                            cameraProvider.bindToLifecycle(
-                                lifecycleOwner,
-                                CameraSelector.DEFAULT_BACK_CAMERA,
-                                preview,
-                                analyzer
+
+                        val imageRect = mapPreviewRectToImageRect(
+                            overlayRect = overlayRect,
+                            previewSize = pSize,
+                            imageWidth = imageProxy.width,
+                            imageHeight = imageProxy.height
+                        )
+
+                        if (imageRect == null) {
+                            imageProxy.close()
+                            return@setAnalyzer
+                        }
+
+                        // Создаём analyzer один раз
+                        val analyzer = analyzerRef.value
+                            ?: BpOcrAnalyzer(imageRect).also { analyzerRef.value = it }
+
+                        val result = analyzer.analyze(imageProxy)
+
+                        if (
+                            result != null &&
+                            isScanningRef.value &&
+                            result.result.confidence >= 0.5f &&
+                            result.result.sys != null &&
+                            result.result.dia != null
+                        ) {
+                            val scanResult = ScanOcrResult(
+                                systolic = result.result.sys,
+                                diastolic = result.result.dia,
+                                pulse = result.result.pulse
                             )
-                        } catch (e: Exception) {
-                            Log.e("ScanScreen", "Camera bind failed", e)
+                            mainHandler.post {
+                                ocrResult = scanResult
+                                isScanning = false
+                                isScanningRef.value = false
+                            }
                         }
-                    }, ContextCompat.getMainExecutor(ctx))
-                    previewView
-                },
-                modifier = Modifier.fillMaxSize()
+                    } catch (e: Throwable) {
+                        Log.e("ScanScreen", "Analyzer error", e)
+                    } finally {
+                        imageProxy.close()
+                    }
+                }
+
+                cameraProvider.unbindAll()
+                cameraProvider.bindToLifecycle(
+                    lifecycleOwner,
+                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    preview,
+                    imageAnalysis
+                )
+            } catch (e: Exception) {
+                Log.e("ScanScreen", "Camera bind failed", e)
+            }
+        }, ContextCompat.getMainExecutor(context))
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+    ) {
+        // PreviewView — всегда в дереве, не пересоздаётся
+        if (hasCameraPermission) {
+            AndroidView(
+                factory = { previewView },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onGloballyPositioned { coordinates ->
+                        previewSize = coordinates.size
+                    }
             )
-        } else if (!showManualForm) {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        } else {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
                 CircularProgressIndicator(color = Color.White)
             }
         }
 
-        // ── Оверлей сканирования ─────────────────────────────────
+        // Рамка сканирования
         if (isScanning && !showManualForm) {
-            ScannerOverlay()
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .onGloballyPositioned { coordinates ->
+                        val w = coordinates.size.width.toFloat()
+                        val h = coordinates.size.height.toFloat()
+                        val rectWidth = w * 0.78f
+                        val rectHeight = h * 0.28f
+                        val left = (w - rectWidth) / 2f
+                        val top = (h - rectHeight) / 2.8f
+                        overlayRectPx = Rect(
+                            left = left,
+                            top = top,
+                            right = left + rectWidth,
+                            bottom = top + rectHeight
+                        )
+                    }
+            ) {
+                ScannerOverlay()
+            }
         }
 
-        // ── Верхняя панель: крестик ──────────────────────────────
+        // Кнопка закрыть
         if (!showManualForm) {
             IconButton(
                 onClick = onBack,
@@ -126,16 +252,19 @@ fun ScanScreen(
                     .padding(16.dp)
                     .statusBarsPadding()
             ) {
-                Icon(Icons.Default.Close, contentDescription = "Закрыть", tint = Color.White)
+                Icon(
+                    imageVector = Icons.Default.Close,
+                    contentDescription = "Закрыть",
+                    tint = Color.White
+                )
             }
         }
 
-        // ── Кнопка "Ввести вручную" — видна только во время сканирования ──
+        // Кнопка "Ввести вручную"
         if (isScanning && !showManualForm) {
             Button(
                 onClick = {
-                    // Открываем форму с пустыми полями
-                    ocrResult = BpOcrParser.OcrResult(null, null, null)
+                    ocrResult = ScanOcrResult(null, null, null)
                     showManualForm = true
                     isScanning = false
                 },
@@ -150,19 +279,22 @@ fun ScanScreen(
                 )
             ) {
                 Icon(
-                    Icons.Default.Edit,
+                    imageVector = Icons.Default.Edit,
                     contentDescription = null,
                     modifier = Modifier.size(16.dp)
                 )
-                Spacer(Modifier.width(8.dp))
-                Text("Ввести вручную", fontSize = 14.sp, fontWeight = FontWeight.Medium)
+                Spacer(Modifier.size(8.dp))
+                Text(
+                    text = "Ввести вручную",
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium
+                )
             }
         }
 
-        // ── Форма подтверждения после OCR ────────────────────────
+        // Форма подтверждения
         val result = ocrResult
         if ((!isScanning || showManualForm) && result != null) {
-            // Затемнение фона
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -174,16 +306,48 @@ fun ScanScreen(
             ) {
                 BpConfirmationForm(
                     initial = result,
-                    onConfirm = { sys, dia, pulse ->
-                        onResult(sys, dia, pulse)
-                    },
+                    onConfirm = { sys, dia, pulse -> onResult(sys, dia, pulse) },
                     onRetry = {
                         ocrResult = null
                         showManualForm = false
                         isScanning = true
+                        isScanningRef.value = true
+                        analyzerRef.value = null
                     }
                 )
             }
         }
     }
+}
+
+private fun mapPreviewRectToImageRect(
+    overlayRect: Rect,
+    previewSize: IntSize,
+    imageWidth: Int,
+    imageHeight: Int
+): RectF? {
+    if (previewSize.width <= 0 || previewSize.height <= 0 ||
+        imageWidth <= 0 || imageHeight <= 0
+    ) return null
+
+    val previewW = previewSize.width.toFloat()
+    val previewH = previewSize.height.toFloat()
+    val imageW = imageWidth.toFloat()
+    val imageH = imageHeight.toFloat()
+
+    // FILL_CENTER: масштаб по максимуму (без letterbox)
+    val scale = maxOf(previewW / imageW, previewH / imageH)
+    val fittedWidth = imageW * scale
+    val fittedHeight = imageH * scale
+    val dx = (previewW - fittedWidth) / 2f
+    val dy = (previewH - fittedHeight) / 2f
+
+    val left = ((overlayRect.left - dx) / scale).coerceIn(0f, imageW)
+    val top = ((overlayRect.top - dy) / scale).coerceIn(0f, imageH)
+    val right = ((overlayRect.right - dx) / scale).coerceIn(0f, imageW)
+    val bottom = ((overlayRect.bottom - dy) / scale).coerceIn(0f, imageH)
+
+    if (right - left < 20f || bottom - top < 20f) return null
+
+    return RectF(left, top, right, bottom)
 }

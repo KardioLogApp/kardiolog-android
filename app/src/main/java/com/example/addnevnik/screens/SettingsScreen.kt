@@ -15,7 +15,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchColors
 import androidx.compose.material3.SwitchDefaults
@@ -264,28 +263,23 @@ fun SettingsScreen(
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        "Настройки",
-                        fontWeight = FontWeight.Bold,
-                        color = primaryColor,
-                        fontSize = 22.sp
-                    )
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface
+    Column(modifier = Modifier.fillMaxSize()) {
+        TopAppBar(
+            title = {
+                Text(
+                    "Настройки",
+                    fontWeight = FontWeight.Bold,
+                    color = primaryColor,
+                    fontSize = 22.sp
                 )
+            },
+            colors = TopAppBarDefaults.topAppBarColors(
+                containerColor = MaterialTheme.colorScheme.surface
             )
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { paddingValues ->
+        )
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)

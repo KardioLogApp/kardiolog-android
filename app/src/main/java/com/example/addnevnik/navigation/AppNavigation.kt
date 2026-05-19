@@ -2,7 +2,10 @@ package com.example.addnevnik.navigation
 
 import android.content.Context
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ShowChart
@@ -21,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -102,23 +106,29 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
         AppRoute.Settings
     )
 
-    Box {
-        Scaffold(
-            bottomBar = {
-                if (showBottomBar) {
-                    BottomBar(
-                        navController = navController,
-                        destinations = destinations
-                    )
-                }
+    // Scaffold без внешнего Box — он сам занимает весь экран
+    // DisclaimerScreen внутри content лямбды поверх NavHost
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        bottomBar = {
+            if (showBottomBar) {
+                BottomBar(
+                    navController = navController,
+                    destinations = destinations
+                )
             }
-        ) { innerPadding ->
+        }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .imePadding()
+        ) {
             NavHost(
                 navController = navController,
                 startDestination = AppRoute.Home,
-                modifier = Modifier
-                    .padding(innerPadding)
-                    .imePadding()
+                modifier = Modifier.fillMaxSize()
             ) {
                 composable(AppRoute.Home) {
                     val vm: HomeViewModel = viewModel(factory = factory)
@@ -189,15 +199,15 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                     )
                 }
             }
-        }
 
-        if (!disclaimerAccepted) {
-            DisclaimerScreen(
-                onAccept = {
-                    prefs.edit().putBoolean("disclaimer_accepted", true).apply()
-                    disclaimerAccepted = true
-                }
-            )
+            if (!disclaimerAccepted) {
+                DisclaimerScreen(
+                    onAccept = {
+                        prefs.edit().putBoolean("disclaimer_accepted", true).apply()
+                        disclaimerAccepted = true
+                    }
+                )
+            }
         }
     }
 }
@@ -233,9 +243,7 @@ private fun BottomBar(
                         contentDescription = stringResource(destination.titleRes)
                     )
                 },
-                label = {
-                    Text(text = stringResource(destination.titleRes))
-                }
+                label = { Text(text = stringResource(destination.titleRes)) }
             )
         }
     }

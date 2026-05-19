@@ -19,6 +19,16 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
+    }
+
+    bundle {
+        abi {
+            enableSplit = true
+        }
     }
 
     buildTypes {
@@ -29,6 +39,7 @@ android {
                 "proguard-rules.pro"
             )
         }
+
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
@@ -94,6 +105,9 @@ dependencies {
     implementation("androidx.camera:camera-camera2:$cameraxVersion")
     implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
     implementation("androidx.camera:camera-view:$cameraxVersion")
+
+    // OpenCV for 7-segment OCR
+    implementation("org.opencv:opencv:4.9.0")
 
     // ML Kit Text Recognition
     implementation("com.google.mlkit:text-recognition:16.0.1")

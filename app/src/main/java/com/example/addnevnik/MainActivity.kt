@@ -10,12 +10,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
 import androidx.core.view.WindowCompat
 import androidx.lifecycle.lifecycleScope
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import com.example.addnevnik.data.repository.SettingsRepository
 import com.example.addnevnik.model.SettingsUiState
 import com.example.addnevnik.navigation.AppNavigation
@@ -31,8 +31,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Передаём управление insets приложению — клавиатура сдвигает контент, не перекрывает
         WindowCompat.setDecorFitsSystemWindows(window, false)
 
         val app = application as AppDnevnikApplication

@@ -33,7 +33,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
@@ -148,8 +147,8 @@ fun HistoryScreen(viewModel: HomeViewModel, settingsViewModel: SettingsViewModel
         }
     }
 
-    Scaffold(
-        topBar = {
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(modifier = Modifier.fillMaxSize()) {
             TopAppBar(
                 title = {
                     Text(
@@ -163,15 +162,6 @@ fun HistoryScreen(viewModel: HomeViewModel, settingsViewModel: SettingsViewModel
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             )
-        },
-        containerColor = MaterialTheme.colorScheme.background,
-        snackbarHost = { SnackbarHost(snackbarHostState) }
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-        ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -337,6 +327,10 @@ fun HistoryScreen(viewModel: HomeViewModel, settingsViewModel: SettingsViewModel
                 }
             }
         }
+        SnackbarHost(
+            hostState = snackbarHostState,
+            modifier = Modifier.align(Alignment.BottomCenter)
+        )
     }
 }
 

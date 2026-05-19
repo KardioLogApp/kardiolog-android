@@ -13,11 +13,16 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.addnevnik.util.BpOcrParser
+
+data class ScanOcrResult(
+    val systolic: Int?,
+    val diastolic: Int?,
+    val pulse: Int?
+)
 
 @Composable
 fun BpConfirmationForm(
-    initial: BpOcrParser.OcrResult,
+    initial: ScanOcrResult,
     onConfirm: (Int, Int, Int?) -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
@@ -32,7 +37,6 @@ fun BpConfirmationForm(
         mutableStateOf(initial.pulse?.toString() ?: "")
     }
 
-    // Показываем предупреждение если OCR дал результат, но он выглядит подозрительно
     val sysInt = systolicText.toIntOrNull()
     val diaInt = diastolicText.toIntOrNull()
     val suspiciousResult = sysInt != null && diaInt != null && sysInt <= diaInt
@@ -45,7 +49,6 @@ fun BpConfirmationForm(
     ) {
         Column(modifier = Modifier.padding(24.dp).navigationBarsPadding()) {
 
-            // Заголовок
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -59,7 +62,6 @@ fun BpConfirmationForm(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
-                // Подсказка что считалось автоматически
                 if (initial.systolic != null) {
                     Surface(
                         color = MaterialTheme.colorScheme.primaryContainer,
@@ -77,7 +79,6 @@ fun BpConfirmationForm(
 
             Spacer(Modifier.height(16.dp))
 
-            // Поля ввода
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 BpField(
                     label = "СИСТ",
@@ -105,7 +106,6 @@ fun BpConfirmationForm(
                 )
             }
 
-            // Предупреждение если систола <= диастолы
             if (suspiciousResult) {
                 Spacer(Modifier.height(8.dp))
                 Surface(
@@ -124,15 +124,12 @@ fun BpConfirmationForm(
 
             Spacer(Modifier.height(20.dp))
 
-            // Кнопки
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedButton(
                     onClick = onRetry,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text(
-                        if (initial.systolic == null) "Отмена" else "← К камере"
-                    )
+                    Text(if (initial.systolic == null) "Отмена" else "← К камере")
                 }
                 Button(
                     onClick = {

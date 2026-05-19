@@ -14,7 +14,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -28,7 +27,6 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
@@ -52,39 +50,44 @@ fun HomeScreen(
         )
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("КардиоЛог", fontWeight = FontWeight.Bold) },
-                actions = {
-                    IconButton(onClick = { /* Избранное */ }) {
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-            )
-        }
-    ) { paddingValues ->
-        LazyColumn(
+    Column(modifier = Modifier.fillMaxSize()) {
+
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues),
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "КардиоЛог",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold
+            )
+            IconButton(onClick = { /* Избранное */ }) {
+                Icon(
+                    imageVector = Icons.Default.Favorite,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             item {
                 ElevatedCard(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.elevatedCardColors(
                         containerColor = MaterialTheme.colorScheme.surface
                     ),
                     elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
                 ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
                         Text(
                             text = "Последний замер",
                             style = MaterialTheme.typography.labelLarge,
@@ -92,11 +95,11 @@ fun HomeScreen(
                         )
 
                         if (latestPressure == null) {
-                            Spacer(modifier = Modifier.height(12.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
                             Text(
                                 text = "Нет данных. Добавьте первый замер.",
                                 style = MaterialTheme.typography.bodyLarge,
-                                modifier = Modifier.padding(vertical = 8.dp),
+                                modifier = Modifier.padding(vertical = 4.dp),
                                 color = MaterialTheme.colorScheme.onSurface
                             )
                         } else {
@@ -105,7 +108,7 @@ fun HomeScreen(
                                 diastolic = latestPressure!!.diastolic
                             )
 
-                            Spacer(modifier = Modifier.height(8.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -133,7 +136,7 @@ fun HomeScreen(
                                 }
                             }
 
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = category.shortLabel,
                                 style = MaterialTheme.typography.bodyMedium,
@@ -141,7 +144,7 @@ fun HomeScreen(
                                 fontWeight = FontWeight.SemiBold
                             )
 
-                            Spacer(modifier = Modifier.height(6.dp))
+                            Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = formatTimestamp(latestPressure!!.timestamp_ms),
                                 style = MaterialTheme.typography.bodySmall,
@@ -157,7 +160,7 @@ fun HomeScreen(
                     onClick = { viewModel.onActionClick("pressure") },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp),
+                        .height(48.dp),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = MaterialTheme.colorScheme.primary
@@ -174,7 +177,7 @@ fun HomeScreen(
                     onClick = onScanRequest,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp),
+                        .height(48.dp),
                     shape = RoundedCornerShape(12.dp),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary)
                 ) {
@@ -193,7 +196,7 @@ fun HomeScreen(
                     text = "Последние записи",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 8.dp),
+                    modifier = Modifier.padding(top = 4.dp),
                     color = MaterialTheme.colorScheme.onSurface
                 )
             }
@@ -205,7 +208,7 @@ fun HomeScreen(
                         text = "Здесь появятся ваши записи",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 8.dp)
+                        modifier = Modifier.padding(vertical = 4.dp)
                     )
                 }
             } else {
@@ -245,7 +248,7 @@ private fun LastEntryCard(
     ) {
         Row(
             modifier = Modifier
-                .padding(16.dp)
+                .padding(horizontal = 12.dp, vertical = 10.dp)
                 .fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
@@ -258,7 +261,7 @@ private fun LastEntryCard(
                     color = MaterialTheme.colorScheme.onSurface
                 )
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(3.dp))
 
                 Surface(
                     color = category.color.copy(alpha = 0.12f),
@@ -267,7 +270,7 @@ private fun LastEntryCard(
                 ) {
                     Text(
                         text = category.shortLabel,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                         style = MaterialTheme.typography.labelMedium,
                         color = category.color,
                         fontWeight = FontWeight.Bold
@@ -275,7 +278,7 @@ private fun LastEntryCard(
                 }
 
                 if (!entry.tag.isNullOrBlank()) {
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(3.dp))
                     Text(
                         text = entry.tag,
                         style = MaterialTheme.typography.labelSmall,
@@ -289,7 +292,7 @@ private fun LastEntryCard(
                 val dailyNote = allDailyNotes.find { it.dateKey == dateKey }
 
                 if (dailyNote != null && dailyNote.medication.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = "Доп. препарат: ${dailyNote.medication}",
                         style = MaterialTheme.typography.labelSmall,
@@ -326,7 +329,7 @@ private fun StatusChip(systolic: Int, diastolic: Int) {
     ) {
         Text(
             text = category.shortLabel,
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
             style = MaterialTheme.typography.labelMedium,
             color = category.color,
             fontWeight = FontWeight.Bold
