@@ -15,6 +15,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import com.example.addnevnik.data.local.BloodPressureEntity
 import com.example.addnevnik.data.local.DailyNoteEntity
+import com.example.addnevnik.util.BpDataMapper
 import com.example.addnevnik.util.MeasurementRow
 import com.example.addnevnik.util.PatientInfo
 import java.io.File
@@ -43,7 +44,8 @@ class ReportViewModel(
                     return@launch
                 }
                 
-                val rows = groupMeasurementsByDay(data, dailyNotes)
+                // Используем единый Mapper
+                val rows = BpDataMapper.toMeasurementRows(data, dailyNotes)
 
                 // Averages computed only from entries shown in the table (morning + evening primary)
                 // to ensure consistency between summary numbers and table values
@@ -79,60 +81,6 @@ class ReportViewModel(
                 _uiState.value = ReportUiState.Error(e.message ?: "Неизвестная ошибка")
             }
         }
-    }
-
-    private fun groupMeasurementsByDay(
-        data: List<BloodPressureEntity>,
-        dailyNotes: List<DailyNoteEntity>
-    ): List<MeasurementRow> {
-        val calendar = Calendar.getInstance()
-        val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
-        val dateKeyFmt = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-        
-        val rawGroups = data.groupBy { 
-            calendar.timeInMillis = it.timestamp_ms
-            calendar.set(Calendar.HOUR_OF_DAY, 0)
-            calendar.set(Calendar.MINUTE, 0)
-            calendar.set(Calendar.SECOND, 0)
-            calendar.set(Calendar.MILLISECOND, 0)
-            calendar.timeInMillis
-        }
-        
-        return rawGroups.map { (dateKey, entries) ->
-            val morningEntry = entries.filter {
-                calendar.timeInMillis = it.timestamp_ms
-                calendar.get(Calendar.HOUR_OF_DAY) in 6..10
-            }.let { list -> list.find { it.isPrimary } ?: list.firstOrNull() }
-
-            val eveningEntry = entries.filter {
-                calendar.timeInMillis = it.timestamp_ms
-                calendar.get(Calendar.HOUR_OF_DAY) in 18..23
-            }.let { list -> list.find { it.isPrimary } ?: list.firstOrNull() }
-
-            val noteKey = dateKeyFmt.format(Date(dateKey))
-            val dailyNote = dailyNotes.find { it.dateKey == noteKey }
-
-            // Count entries outside morning (6-10) and evening (18-23) windows
-            val outOfRange = entries.count {
-                calendar.timeInMillis = it.timestamp_ms
-                val h = calendar.get(Calendar.HOUR_OF_DAY)
-                h !in 6..10 && h !in 18..23
-            }
-
-            MeasurementRow(
-                date = dateKey,
-                morningTime = morningEntry?.let { timeFmt.format(Date(it.timestamp_ms)) },
-                eveningTime = eveningEntry?.let { timeFmt.format(Date(it.timestamp_ms)) },
-                morningAd = morningEntry?.let { "${it.systolic}/${it.diastolic}" },
-                morningHr = morningEntry?.pulse,
-                eveningAd = eveningEntry?.let { "${it.systolic}/${it.diastolic}" },
-                eveningHr = eveningEntry?.pulse,
-                note = listOfNotNull(morningEntry?.tag, eveningEntry?.tag).firstOrNull { it.isNotBlank() },
-                medication = dailyNote?.medication,
-                wellbeing = dailyNote?.wellbeing,
-                outOfRangeCount = outOfRange
-            )
-        }.sortedByDescending { it.date }
     }
 
     fun shareReport(context: Context, file: File) {

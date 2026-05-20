@@ -35,6 +35,9 @@ interface AppDao {
     @Delete
     suspend fun deleteBloodPressure(entry: BloodPressureEntity)
 
+    @Query("DELETE FROM blood_pressure")
+    suspend fun clearAllBloodPressure()
+
     // Notes
     @Query("SELECT * FROM notes ORDER BY timestamp_ms DESC")
     fun getAllNotes(): Flow<List<NoteEntity>>

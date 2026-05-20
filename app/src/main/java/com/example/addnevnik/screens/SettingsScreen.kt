@@ -48,12 +48,14 @@ fun SettingsScreen(
     onUpdateGender: (String) -> Unit = {},
     onUpdateBirthDate: (String) -> Unit = {},
     onLoadTestData: () -> Unit = {},
+    onClearData: () -> Unit = {},
     onActivatePromo: (String) -> Boolean = { false }
 ) {
     var showMorningPicker by remember { mutableStateOf(false) }
     var showEveningPicker by remember { mutableStateOf(false) }
     var showProfileDialog by remember { mutableStateOf(false) }
     var showPromoDialog by remember { mutableStateOf(false) }
+    var showClearDataDialog by remember { mutableStateOf(false) }
     var promoCode by remember { mutableStateOf("") }
     var promoError by remember { mutableStateOf(false) }
     var promoSuccess by remember { mutableStateOf(false) }
@@ -73,6 +75,30 @@ fun SettingsScreen(
         disabledUncheckedThumbColor = Color.White.copy(alpha = 0.7f),
         disabledUncheckedTrackColor = Color(0xFFE0E0E0).copy(alpha = 0.6f)
     )
+
+    if (showClearDataDialog) {
+        AlertDialog(
+            onDismissRequest = { showClearDataDialog = false },
+            title = { Text("Очистка данных", fontWeight = FontWeight.Bold) },
+            text = { Text("Вы уверены? Это удалит всю историю измерений безвозвратно.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onClearData()
+                        showClearDataDialog = false
+                    },
+                    colors = ButtonDefaults.textButtonColors(contentColor = Color(0xFFD32F2F))
+                ) {
+                    Text("Удалить")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearDataDialog = false }) {
+                    Text("Отмена")
+                }
+            }
+        )
+    }
 
     if (showPromoDialog) {
         AlertDialog(
@@ -398,7 +424,7 @@ fun SettingsScreen(
                 }
             }
 
-            SectionTitle("Инструменты", topPadding = 8.dp)
+            SectionTitle("Управление данными", topPadding = 8.dp)
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -406,23 +432,83 @@ fun SettingsScreen(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                 elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .clickable { onLoadTestData() }
-                        .padding(16.dp)
-                ) {
-                    Text(
-                        text = "Загрузить тестовые данные",
-                        fontSize = 17.sp,
-                        color = primaryColor,
-                        fontWeight = FontWeight.Medium
+                Column(modifier = Modifier.padding(16.dp)) {
+                    // Кнопка загрузки тестовых данных
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onLoadTestData() }
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Загрузить тестовые данные",
+                                fontSize = 17.sp,
+                                color = primaryColor,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "Заполнит дневник за 30 дней",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Заполнит дневник за 14 дней для проверки",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 13.sp
+
+                    // Кнопка очистки
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showClearDataDialog = true }
+                            .padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = "Очистить все данные",
+                                fontSize = 17.sp,
+                                color = Color(0xFFD32F2F), // Красный цвет для опасности
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "Удалит всю историю измерений",
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+
+                    HorizontalDivider(
+                        modifier = Modifier.padding(vertical = 8.dp),
+                        thickness = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant
                     )
+
+                    // Информация о бекапе
+                    Column(modifier = Modifier.padding(top = 4.dp)) {
+                        Text(
+                            text = "Автосохранение данных",
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = "Ваша история и настройки автоматически сохраняются в Google Аккаунт. При переустановке приложения данные восстановятся.",
+                            fontSize = 13.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            lineHeight = 18.sp
+                        )
+                    }
                 }
             }
 

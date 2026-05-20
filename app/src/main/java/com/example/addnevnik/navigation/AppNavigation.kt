@@ -174,6 +174,7 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                         onUpdateGender = vm::updateGender,
                         onUpdateBirthDate = vm::updateBirthDate,
                         onLoadTestData = { vm.loadTestData {} },
+                        onClearData = { vm.clearAllData {} },
                         onActivatePromo = vm::activatePremium
                     )
                 }

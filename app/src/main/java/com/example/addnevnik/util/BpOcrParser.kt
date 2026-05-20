@@ -4,12 +4,17 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.RectF
+import android.os.Environment
+import android.util.Log
 import androidx.camera.core.ImageProxy
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
+import org.opencv.core.Point
 import org.opencv.core.Size
+import org.opencv.imgcodecs.Imgcodecs
 import org.opencv.imgproc.Imgproc
+import java.io.File
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
@@ -32,12 +37,19 @@ data class BpOcrResult(
     val rows: List<RowDebugInfo>
 )
 
-class BpOcrAnalyzer(
-    private val guideRect: RectF
-) {
+class BpOcrParser {
+    private companion object {
+        const val TAG = "BP_OCR"
+        const val BUILD_MARK = "v2024-05-20-01-ROW-THRESH"
+    }
+
+    init {
+        Log.i(TAG, "★ BpOcrParser $BUILD_MARK created")
+    }
+
     private var frameCount = 0
     private val history = ArrayDeque<BpResult>(5)
-    private val clahe = Imgproc.createCLAHE(2.5, Size(8.0, 8.0))
+    private var debugDir: File? = null
 
     private val segmentMap: Map<List<Boolean>, Char> = mapOf(
         listOf(true, true, true, true, true, true, false) to '0',
@@ -52,18 +64,109 @@ class BpOcrAnalyzer(
         listOf(true, true, true, true, false, true, true) to '9'
     )
 
-    fun analyze(image: ImageProxy): BpOcrResult? {
-        frameCount++
-        if (frameCount % 15 != 0) return null
+    private fun ensureDebugDir(): File? {
+        if (debugDir != null) return debugDir
+        val base = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES)
+        val dir = File(base, "KardioLog/debug_ocr/${System.currentTimeMillis()}")
+        if (dir.mkdirs()) {
+            debugDir = dir
+            Log.d(TAG, "debug dir created: ${dir.absolutePath}")
+            return dir
+        }
+        Log.e(TAG, "failed to create debug dir: ${dir.absolutePath}")
+        return null
+    }
 
-        val mat = imageToBgrMat(image)
+    private fun saveDebugMat(mat: Mat, name: String) {
+        if (mat.empty()) {
+            Log.d(TAG, "saveDebugMat: $name is EMPTY, skipping")
+            return
+        }
+        val dir = ensureDebugDir() ?: return
+        val file = File(dir, "${String.format("%04d", frameCount)}_$name.png")
+        val ok = Imgcodecs.imwrite(file.absolutePath, mat)
+        if (ok) {
+            Log.d(TAG, "saved debug image: ${file.name} (${mat.cols()}x${mat.rows()})")
+        } else {
+            Log.e(TAG, "failed to save debug image: ${file.name}")
+        }
+    }
+
+    fun analyze(image: ImageProxy, guideRect: RectF): BpOcrResult? {
+        frameCount++
+        Log.d(TAG, ">>> FRAME $frameCount (${image.width}x${image.height}), fmt=${image.format}")
+
+        if (frameCount % 15 != 0) {
+            return null
+        }
+
+        Log.d(TAG, "processing frame $frameCount (every 15th)")
+        Log.d(TAG, "guideRect=[l=${guideRect.left}, t=${guideRect.top}, r=${guideRect.right}, b=${guideRect.bottom}]")
+        Log.d(TAG, "history size=${history.size}")
+
+        val bgr = imageToBgrMat(image)
+        if (bgr.empty()) {
+            Log.e(TAG, "imageToBgrMat returned empty mat!")
+            return null
+        }
+
+        // Handle Rotation
+        val rotation = image.imageInfo.rotationDegrees
+        val rotatedBgr = Mat()
+        when (rotation) {
+            90 -> Core.rotate(bgr, rotatedBgr, Core.ROTATE_90_CLOCKWISE)
+            180 -> Core.rotate(bgr, rotatedBgr, Core.ROTATE_180)
+            270 -> Core.rotate(bgr, rotatedBgr, Core.ROTATE_90_COUNTERCLOCKWISE)
+            else -> bgr.copyTo(rotatedBgr)
+        }
+        bgr.release()
+
+        // Transform guideRect to match rotated image coordinates
+        val imgW = image.width.toFloat()
+        val imgH = image.height.toFloat()
+        val rotatedGuideRect = when (rotation) {
+            90 -> RectF(
+                guideRect.top,
+                imgW - guideRect.right,
+                guideRect.bottom,
+                imgW - guideRect.left
+            )
+            180 -> RectF(
+                imgW - guideRect.right,
+                imgH - guideRect.bottom,
+                imgW - guideRect.left,
+                imgH - guideRect.top
+            )
+            270 -> RectF(
+                imgH - guideRect.bottom,
+                guideRect.left,
+                imgH - guideRect.top,
+                guideRect.right
+            )
+            else -> guideRect
+        }
+
+        Log.d(TAG, "BGR mat (rotated $rotation): ${rotatedBgr.cols()}x${rotatedBgr.rows()}")
+        saveDebugMat(rotatedBgr, "00_bgr_full")
+
         return try {
-            val ocrResult = runOcr(mat)
+            val ocrResult = runOcr(rotatedBgr, rotatedGuideRect)
+
+            Log.d(TAG, "<<< FINAL: sys=${ocrResult.result.sys}, dia=${ocrResult.result.dia}, pulse=${ocrResult.result.pulse}, conf=${ocrResult.result.confidence}")
+            ocrResult.rows.forEachIndexed { i, row ->
+                Log.d(TAG, "  row[$i] value=${row.value}, conf=${row.rowConfidence}, rect=[l=${row.rect.left}, t=${row.rect.top}, r=${row.rect.right}, b=${row.rect.bottom}]")
+            }
+
             history.addLast(ocrResult.result)
             if (history.size > 5) history.removeFirst()
+            Log.d(TAG, "history: ${history.joinToString(" | ")}")
+
             ocrResult
+        } catch (t: Throwable) {
+            Log.e(TAG, "CRASH on frame $frameCount", t)
+            null
         } finally {
-            mat.release()
+            rotatedBgr.release()
         }
     }
 
@@ -114,6 +217,8 @@ class BpOcrAnalyzer(
         val uBuf = uPlane.buffer
         val vBuf = vPlane.buffer
 
+        Log.d(TAG, "YUV planes: Y stride=$yRowStride, UV stride=$uvRowStride, UV pixelStride=$uvPixelStride")
+
         val uvHeight = height / 2
         val uvWidth = width / 2
         val nv21 = ByteArray(width * height * 3 / 2)
@@ -144,7 +249,7 @@ class BpOcrAnalyzer(
         return bgr
     }
 
-    private fun preprocessCrop(bgr: Mat): Mat {
+    private fun preprocessCrop(bgr: Mat, guideRect: RectF): Mat {
         val gw = guideRect.width()
         val gh = guideRect.height()
         val pad = (min(gw, gh) / 30f).toInt()
@@ -154,63 +259,118 @@ class BpOcrAnalyzer(
         val x2 = min(bgr.cols(), guideRect.right.toInt() - pad)
         val y2 = min(bgr.rows(), guideRect.bottom.toInt() - pad)
 
-        if (x2 <= x || y2 <= y) return Mat()
+        Log.d(TAG, "crop: guide=[${guideRect.left.toInt()},${guideRect.top.toInt()},${guideRect.right.toInt()},${guideRect.bottom.toInt()}], pad=$pad, bounds=[$x,$y,$x2,$y2], source=${bgr.cols()}x${bgr.rows()}")
+
+        if (x2 <= x || y2 <= y) {
+            Log.w(TAG, "INVALID crop bounds: x2<=$x or y2<=$y")
+            return Mat()
+        }
 
         val cropped = Mat(bgr, org.opencv.core.Rect(x, y, x2 - x, y2 - y))
+        saveDebugMat(cropped, "01_cropped")
 
         val gray = Mat()
         Imgproc.cvtColor(cropped, gray, Imgproc.COLOR_BGR2GRAY)
         cropped.release()
+        saveDebugMat(gray, "02_gray")
 
-        val enhanced = Mat()
-        clahe.apply(gray, enhanced)
+        // Reduced Gaussian blur (5x5) to preserve thin segments while removing noise
+        val blurred = Mat()
+        Imgproc.GaussianBlur(gray, blurred, Size(5.0, 5.0), 0.0)
         gray.release()
+        saveDebugMat(blurred, "03_blur")
 
-        val mean = Core.mean(enhanced).`val`[0]
-        val threshType =
-            if (mean < 128) Imgproc.THRESH_BINARY else Imgproc.THRESH_BINARY_INV
-
-        val binary = Mat()
-        Imgproc.threshold(
-            enhanced,
-            binary,
-            0.0,
+        // Adaptive threshold - better for uneven lighting
+        val adaptive = Mat()
+        Imgproc.adaptiveThreshold(
+            blurred,
+            adaptive,
             255.0,
-            threshType or Imgproc.THRESH_OTSU
+            Imgproc.ADAPTIVE_THRESH_GAUSSIAN_C,
+            Imgproc.THRESH_BINARY_INV,
+            31, // blockSize (Int)
+            10.0  // C value (Double)
         )
-        enhanced.release()
+        blurred.release()
+        saveDebugMat(adaptive, "04_adaptive")
 
-        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 1.0))
+        // Morphological operations
+        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(5.0, 3.0))
         val closed = Mat()
-        Imgproc.morphologyEx(binary, closed, Imgproc.MORPH_CLOSE, kernel)
-        binary.release()
-        kernel.release()
+        Imgproc.morphologyEx(adaptive, closed, Imgproc.MORPH_CLOSE, kernel)
+        adaptive.release()
 
-        return closed
+        val opened = Mat()
+        val openKernel = Imgproc.getStructuringElement(Imgproc.MORPH_RECT, Size(3.0, 3.0))
+        Imgproc.morphologyEx(closed, opened, Imgproc.MORPH_OPEN, openKernel)
+        closed.release()
+        openKernel.release()
+        saveDebugMat(opened, "05_morph")
+
+        val nonZero = Core.countNonZero(opened)
+        val totalPixels = opened.rows() * opened.cols()
+        val fillRatio = if (totalPixels > 0) nonZero.toFloat() / totalPixels else 0f
+        Log.d(TAG, "preprocess done: ${opened.cols()}x${opened.rows()}, nonZero=$nonZero/$totalPixels (${String.format("%.1f", fillRatio * 100)}%)")
+
+        return opened
     }
 
     private fun cropDigitZone(binary: Mat): Mat {
         if (binary.empty()) return Mat()
 
         val sw = binary.cols()
-        val x0 = (0.25 * sw).toInt()
-        var x1 = (0.88 * sw).toInt()
+        val sh = binary.rows()
 
-        val rightStart = sw / 2
-        for (col in rightStart until sw) {
-            val colMat = binary.col(col)
-            try {
-                val coverage = Core.countNonZero(colMat).toFloat() / binary.rows()
-                if (coverage > 0.3f) x1 = min(x1, col)
-            } finally {
-                colMat.release()
+        // Vertical projection to find digit regions
+        val vProjMat = Mat()
+        Core.reduce(binary, vProjMat, 0, Core.REDUCE_SUM, CvType.CV_32F)
+        val vProj = FloatArray(sw) { col -> vProjMat.get(0, col)[0].toFloat() }
+        vProjMat.release()
+
+        // Find the main digit block by looking for high-density columns
+        val threshold = (vProj.maxOrNull() ?: 0f) * 0.15f
+        var x0 = -1
+        var x1 = -1
+
+        // Find left edge
+        for (col in 0 until sw) {
+            if (vProj[col] >= threshold) {
+                x0 = col
+                break
             }
         }
 
-        x1 = x1.coerceAtLeast((sw * 0.60).toInt())
-        if (x1 <= x0) return Mat()
+        // Find right edge
+        for (col in sw - 1 downTo 0) {
+            if (vProj[col] >= threshold) {
+                x1 = col
+                break
+            }
+        }
 
-        return Mat(binary, org.opencv.core.Rect(x0, 0, x1 - x0, binary.rows()))
+        if (x0 == -1 || x1 == -1 || x1 <= x0) {
+            Log.w(TAG, "digitZone FAILED: no significant projection found")
+            // Fallback to hardcoded percentages
+            x0 = (0.25 * sw).toInt()
+            x1 = (0.88 * sw).toInt()
+            Log.w(TAG, "digitZone FALLBACK: x0=$x0, x1=$x1")
+        }
+
+        // Add small padding
+        val padding = (sw * 0.02).toInt().coerceAtLeast(2)
+        x0 = (x0 - padding).coerceAtLeast(0)
+        x1 = (x1 + padding).coerceAtMost(sw - 1)
+
+        if (x1 <= x0) {
+            Log.w(TAG, "digitZone FAILED after padding: x1($x1) <= x0($x0)")
+            return Mat()
+        }
+
+        Log.d(TAG, "digitZone: x0=$x0, x1=$x1, width=${x1 - x0} (dynamic)")
+
+        val zone = Mat(binary, org.opencv.core.Rect(x0, 0, x1 - x0, binary.rows()))
+        saveDebugMat(zone, "06_digit_zone")
+        return zone
     }
 
     private fun findRowBands(binary: Mat): List<IntRange> {
@@ -226,12 +386,16 @@ class BpOcrAnalyzer(
         val smoothed = gaussianSmooth(hProj, sigma)
 
         val maxVal = smoothed.maxOrNull() ?: 0f
+        val minVal = smoothed.minOrNull() ?: 0f
         val inverted = FloatArray(h) { maxVal - smoothed[it] }
 
-        val valleys = findPeaks(inverted, minDistance = max(1, h / 5))
+        Log.d(TAG, "hProjection: h=$h, maxProj=$maxVal, minProj=$minVal, sigma=$sigma")
+
+        val peaks = findPeaks(inverted, minDistance = max(1, h / 5))
+        Log.d(TAG, "valleys (peaks of inverted): $peaks")
 
         val boundaries = mutableListOf(0)
-        boundaries.addAll(valleys)
+        boundaries.addAll(peaks)
         boundaries.add(h)
 
         val segments = mutableListOf<Pair<IntRange, Int>>()
@@ -244,11 +408,16 @@ class BpOcrAnalyzer(
             }
         }
 
-        return segments
+        Log.d(TAG, "segments before filter: ${segments.map { "${it.first.first}-${it.first.last} (h=${it.second})" }}")
+
+        val top3 = segments
             .sortedByDescending { it.second }
             .take(3)
             .sortedBy { it.first.first }
-            .map { it.first }
+
+        Log.d(TAG, "top 3 row bands: ${top3.map { "${it.first.first}-${it.first.last} (h=${it.second})" }}")
+
+        return top3.map { it.first }
     }
 
     private fun findDigitRects(rowBinary: Mat): List<IntRange> {
@@ -262,10 +431,14 @@ class BpOcrAnalyzer(
         val vProj = IntArray(w) { col -> vProjMat.get(0, col)[0].toInt() }
         vProjMat.release()
 
+        val maxProj = vProj.maxOrNull() ?: 0
+        val threshold = max(1, (maxProj * 0.15f).toInt())
+        Log.d(TAG, "vProjection row=${rowH}x${w}: maxCol=$maxProj, threshold=$threshold")
+
         val groups = mutableListOf<IntRange>()
         var start = -1
         for (col in 0..w) {
-            val active = col < w && vProj[col] > 0
+            val active = col < w && vProj[col] >= threshold
             if (active && start == -1) {
                 start = col
             } else if (!active && start != -1) {
@@ -277,80 +450,68 @@ class BpOcrAnalyzer(
             }
         }
 
+        Log.d(TAG, "digit groups: ${groups.map { "${it.first}-${it.last} (w=${it.last - it.first + 1})" }}")
+
         return groups
     }
 
-    private data class DigitResult(val char: Char?, val confidence: Float)
+    private data class DigitData(val range: IntRange, val densities: FloatArray)
 
-    private fun recognizeDigit(roi: Mat): DigitResult {
+    // Returns raw densities for global thresholding
+    private fun getDigitDensities(roi: Mat): FloatArray {
         val trimmed = trimEmptyRows(roi)
 
         if (trimmed.empty() || trimmed.rows() < 4 || trimmed.cols() < 2) {
             trimmed.release()
-            return DigitResult(null, 0f)
+            return FloatArray(7) // Return empty/zero densities
         }
 
         val aspectRatio = trimmed.rows().toFloat() / trimmed.cols().toFloat()
         if (aspectRatio > 3.5f) {
             trimmed.release()
-            return DigitResult('1', 0.9f)
+            // Return densities that force '1' (only b and c segments high)
+            // Actually, for global thresholding, we should return realistic densities.
+            // '1' has low density in most zones except right side.
+            // Let's return a specific pattern or just let the caller handle aspect ratio.
+            // For now, return zero array, caller handles '1' logic separately if needed.
+            return FloatArray(7) 
         }
 
-        val binary = Mat()
-        Imgproc.threshold(
-            trimmed,
-            binary,
-            0.0,
-            255.0,
-            Imgproc.THRESH_BINARY or Imgproc.THRESH_OTSU
-        )
-        trimmed.release()
-
-        val h = binary.rows().toFloat()
-        val w = binary.cols().toFloat()
+        val h = trimmed.rows().toFloat()
+        val w = trimmed.cols().toFloat()
 
         val zones = arrayOf(
-            floatArrayOf(0.00f, 0.18f, 0.10f, 0.90f),
-            floatArrayOf(0.05f, 0.50f, 0.65f, 1.00f),
-            floatArrayOf(0.50f, 0.95f, 0.65f, 1.00f),
-            floatArrayOf(0.82f, 1.00f, 0.10f, 0.90f),
-            floatArrayOf(0.50f, 0.95f, 0.00f, 0.35f),
-            floatArrayOf(0.05f, 0.50f, 0.00f, 0.35f),
-            floatArrayOf(0.40f, 0.60f, 0.12f, 0.88f)
+            floatArrayOf(0.00f, 0.22f, 0.15f, 0.85f),   // a(top)
+            floatArrayOf(0.08f, 0.48f, 0.70f, 1.00f),   // b(top-R)
+            floatArrayOf(0.52f, 0.92f, 0.70f, 1.00f),   // c(bot-R)
+            floatArrayOf(0.78f, 1.00f, 0.15f, 0.85f),   // d(bot)
+            floatArrayOf(0.52f, 0.92f, 0.00f, 0.30f),   // e(bot-L)
+            floatArrayOf(0.08f, 0.48f, 0.00f, 0.30f),   // f(top-L)
+            floatArrayOf(0.38f, 0.62f, 0.20f, 0.80f)    // g(mid)
         )
 
         val densities = FloatArray(7) { i ->
             val z = zones[i]
-            val ry0 = (z[0] * h).toInt().coerceIn(0, binary.rows() - 1)
-            val ry1 = (z[1] * h).toInt().coerceIn(ry0 + 1, binary.rows())
-            val rx0 = (z[2] * w).toInt().coerceIn(0, binary.cols() - 1)
-            val rx1 = (z[3] * w).toInt().coerceIn(rx0 + 1, binary.cols())
+            val ry0 = (z[0] * h).toInt().coerceIn(0, trimmed.rows() - 1)
+            val ry1 = (z[1] * h).toInt().coerceIn(ry0 + 1, trimmed.rows())
+            val rx0 = (z[2] * w).toInt().coerceIn(0, trimmed.cols() - 1)
+            val rx1 = (z[3] * w).toInt().coerceIn(rx0 + 1, trimmed.cols())
 
-            val zone = Mat(binary, org.opencv.core.Rect(rx0, ry0, rx1 - rx0, ry1 - ry0))
+            val zone = Mat(trimmed, org.opencv.core.Rect(rx0, ry0, rx1 - rx0, ry1 - ry0))
             val nonZero = Core.countNonZero(zone).toFloat()
             val area = ((ry1 - ry0) * (rx1 - rx0)).toFloat()
             zone.release()
             if (area > 0f) nonZero / area else 0f
         }
 
-        binary.release()
-
-        val threshold = kmeansThreshold(densities)
-        val segs = densities.map { it > threshold }
-        val digit = segmentMap[segs]
-
-        val onDensities = densities.filterIndexed { i, _ -> segs[i] }
-        val offDensities = densities.filterIndexed { i, _ -> !segs[i] }
-        val meanOn = if (onDensities.isNotEmpty()) onDensities.average().toFloat() else 0f
-        val meanOff = if (offDensities.isNotEmpty()) offDensities.average().toFloat() else 0f
-        val conf = ((meanOn - meanOff) / max(threshold, 0.1f)).coerceIn(0f, 1f)
-
-        return DigitResult(digit, conf)
+        trimmed.release()
+        return densities
     }
 
-    private fun runOcr(bgr: Mat): BpOcrResult {
-        val binary = preprocessCrop(bgr)
+    private fun runOcr(bgr: Mat, guideRect: RectF): BpOcrResult {
+        val binary = preprocessCrop(bgr, guideRect)
         if (binary.empty()) {
+            Log.w(TAG, "runOcr: binary EMPTY after preprocess")
             return BpOcrResult(BpResult(null, null, null, 0f), emptyList())
         }
 
@@ -358,68 +519,103 @@ class BpOcrAnalyzer(
         binary.release()
 
         if (digitZone.empty()) {
+            Log.w(TAG, "runOcr: digitZone EMPTY")
             return BpOcrResult(BpResult(null, null, null, 0f), emptyList())
         }
 
         val rowBands = findRowBands(digitZone)
+        Log.d(TAG, "rowBands count=${rowBands.size}: ${rowBands.map { "${it.first}-${it.last}" }}")
+
         val debugRows = mutableListOf<RowDebugInfo>()
         val values = mutableListOf<Int?>()
 
-        val scaleX =
-            (guideRect.right - guideRect.left) * 0.63f / digitZone.cols().coerceAtLeast(1)
-        val scaleY =
-            (guideRect.bottom - guideRect.top) / digitZone.rows().coerceAtLeast(1)
+        val scaleX = (guideRect.right - guideRect.left) * 0.63f / digitZone.cols().coerceAtLeast(1)
+        val scaleY = (guideRect.bottom - guideRect.top) / digitZone.rows().coerceAtLeast(1)
         val rxBase = guideRect.left + 0.25f * (guideRect.right - guideRect.left)
 
         try {
-            for (band in rowBands) {
-                val bandH = (band.last - band.first + 1)
-                    .coerceAtMost(digitZone.rows() - band.first)
-
+            for (bandIdx in rowBands.indices) {
+                val band = rowBands[bandIdx]
+                val bandH = (band.last - band.first + 1).coerceAtMost(digitZone.rows() - band.first)
                 if (bandH <= 0) continue
 
-                val rowMat = Mat(
-                    digitZone,
-                    org.opencv.core.Rect(0, band.first, digitZone.cols(), bandH)
-                )
+                val rowMat = Mat(digitZone, org.opencv.core.Rect(0, band.first, digitZone.cols(), bandH))
+                saveDebugMat(rowMat, "07_row_${bandIdx}_band")
 
                 val sb = StringBuilder()
                 var rowConf = 0f
 
                 try {
                     val digitRanges = findDigitRects(rowMat)
-                    rowConf = if (digitRanges.isEmpty()) 0f else 1f
+                    Log.d(TAG, "row $bandIdx: ${digitRanges.size} digit groups")
 
-                    for (range in digitRanges) {
-                        val roiW = range.last - range.first + 1
-                        if (roiW <= 0) continue
+                    if (digitRanges.isEmpty()) {
+                        rowConf = 0f
+                    } else {
+                        // 1. Collect densities for all digits in this row
+                        val digitDataList = mutableListOf<DigitData>()
+                        var hasValidDigits = false
 
-                        val roiMat = Mat(
-                            rowMat,
-                            org.opencv.core.Rect(range.first, 0, roiW, rowMat.rows())
-                        )
-                        val dr = recognizeDigit(roiMat)
-                        roiMat.release()
+                        for (range in digitRanges) {
+                            val roiW = range.last - range.first + 1
+                            if (roiW <= 0) continue
 
-                        if (dr.char != null) sb.append(dr.char)
-                        rowConf = min(rowConf, dr.confidence)
+                            val roiMat = Mat(rowMat, org.opencv.core.Rect(range.first, 0, roiW, rowMat.rows()))
+                            // Check aspect ratio for '1' before adding to list
+                            val aspect = roiMat.rows().toFloat() / roiMat.cols().toFloat()
+                            
+                            if (aspect > 3.5f) {
+                                // It's a '1', handle separately
+                                sb.append('1')
+                                rowConf = max(rowConf, 0.9f)
+                                hasValidDigits = true
+                                Log.d(TAG, "digit: aspectRatio=$aspect -> forced '1'")
+                            } else {
+                                val densities = getDigitDensities(roiMat)
+                                digitDataList.add(DigitData(range, densities))
+                            }
+                            roiMat.release()
+                        }
+
+                        // 2. Calculate GLOBAL threshold for the row
+                        if (digitDataList.isNotEmpty()) {
+                            val allDensities = digitDataList.flatMap { it.densities.toList() }.toFloatArray()
+                            val rowThreshold = kmeansThreshold(allDensities)
+                            Log.d(TAG, "row $bandIdx: global threshold=$rowThreshold")
+
+                            // 3. Decode digits using global threshold
+                            for (data in digitDataList) {
+                                val segs = data.densities.map { it > rowThreshold }
+                                val digit = segmentMap[segs]
+                                
+                                val segStr = segs.mapIndexed { i, on -> "${if (on) "1" else "0"}" }.joinToString("")
+                                Log.d(TAG, "digit pattern=$segStr, result=$digit")
+
+                                if (digit != null) {
+                                    sb.append(digit)
+                                    hasValidDigits = true
+                                    // Calculate confidence based on distance from threshold
+                                    val dist = data.densities.map { kotlin.math.abs(it - rowThreshold) }.average().toFloat()
+                                    rowConf = max(rowConf, min(1f, dist * 5f)) 
+                                }
+                            }
+                        }
+                        
+                        rowConf = if (hasValidDigits) rowConf else 0f
                     }
+
                 } finally {
                     rowMat.release()
                 }
 
                 val num = sb.toString().toIntOrNull()
                 values.add(num)
+                Log.d(TAG, "row $bandIdx: text='${sb}' parsed=$num, conf=${String.format("%.2f", rowConf)}")
 
                 val ry = guideRect.top + band.first * scaleY
                 debugRows.add(
                     RowDebugInfo(
-                        rect = RectF(
-                            rxBase,
-                            ry,
-                            rxBase + digitZone.cols() * scaleX,
-                            ry + bandH * scaleY
-                        ),
+                        rect = RectF(rxBase, ry, rxBase + digitZone.cols() * scaleX, ry + bandH * scaleY),
                         value = num,
                         rowConfidence = rowConf
                     )
@@ -433,48 +629,52 @@ class BpOcrAnalyzer(
         var dia = values.getOrNull(1)
         var pulse = values.getOrNull(2)
 
-        if (sys != null && sys !in 60..260) sys = null
-        if (dia != null && dia !in 40..160) dia = null
-        if (pulse != null && pulse !in 30..220) pulse = null
-        if (sys != null && dia != null && sys <= dia) {
-            sys = null
-            dia = null
+        Log.d(TAG, "raw values: [$sys, $dia, $pulse]")
+
+        // Range checks
+        if (sys != null && sys !in 60..260) { Log.d(TAG, "sys=$sys OUT OF RANGE [60-260], nulling"); sys = null }
+        if (dia != null && dia !in 40..160) { Log.d(TAG, "dia=$dia OUT OF RANGE [40-160], nulling"); dia = null }
+        if (pulse != null && pulse !in 30..220) { Log.d(TAG, "pulse=$pulse OUT OF RANGE [30-220], nulling"); pulse = null }
+
+        // Pulse Pressure Check
+        if (sys != null && dia != null) {
+            val pp = sys - dia
+            when {
+                pp < 15 -> { Log.d(TAG, "Pulse Pressure $pp < 15, invalid"); sys = null; dia = null }
+                pp > 90 -> { Log.d(TAG, "Pulse Pressure $pp > 90, suspicious") } // Keep but maybe lower conf?
+            }
+        } else {
+             if (sys != null && dia != null && sys <= dia) { Log.d(TAG, "sys($sys) <= dia($dia), nulling both"); sys = null; dia = null }
         }
 
-        val currentResult = BpResult(
-            sys = sys,
-            dia = dia,
-            pulse = pulse,
-            confidence = listOf(sys, dia, pulse).count { it != null } / 3f
-        )
-
+        val currentResult = BpResult(sys, dia, pulse, listOf(sys, dia, pulse).count { it != null } / 3f)
         val majority = majorityVote(history.toList() + currentResult)
+
+        Log.d(TAG, "current=$currentResult, majority=$majority, final=${majority ?: currentResult}")
+
         return BpOcrResult(majority ?: currentResult, debugRows)
     }
 
     private fun majorityVote(results: List<BpResult>): BpResult? {
-        if (results.size < 3) return null
+        if (results.isEmpty()) return null
 
-        fun <T> plurality(values: List<T?>): T? =
+        // Sliding consensus: if a value appears >= 2 times in history, accept it.
+        // This is faster than "3 of 5" and more stable than "1 of 1".
+        fun <T> consensus(values: List<T?>): T? =
             values.filterNotNull()
                 .groupingBy { it }
                 .eachCount()
-                .filter { it.value >= 3 }
+                .filter { it.value >= 2 } // Reduced from 3 to 2
                 .maxByOrNull { it.value }
                 ?.key
 
-        val sys = plurality(results.map { it.sys })
-        val dia = plurality(results.map { it.dia })
-        val pulse = plurality(results.map { it.pulse })
+        val sys = consensus(results.map { it.sys })
+        val dia = consensus(results.map { it.dia })
+        val pulse = consensus(results.map { it.pulse })
 
         if (sys == null && dia == null && pulse == null) return null
 
-        return BpResult(
-            sys = sys,
-            dia = dia,
-            pulse = pulse,
-            confidence = listOf(sys, dia, pulse).count { it != null } / 3f
-        )
+        return BpResult(sys, dia, pulse, listOf(sys, dia, pulse).count { it != null } / 3f)
     }
 
     private fun trimEmptyRows(mat: Mat): Mat {
@@ -500,10 +700,7 @@ class BpOcrAnalyzer(
         }
 
         if (bottom < top) return Mat()
-        return Mat(
-            mat,
-            org.opencv.core.Rect(0, top, mat.cols(), bottom - top + 1)
-        ).clone()
+        return Mat(mat, org.opencv.core.Rect(0, top, mat.cols(), bottom - top + 1)).clone()
     }
 
     private fun gaussianSmooth(arr: FloatArray, sigma: Float): FloatArray {

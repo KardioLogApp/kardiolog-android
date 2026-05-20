@@ -65,6 +65,7 @@ import com.example.addnevnik.data.local.BloodPressureEntity
 import com.example.addnevnik.data.local.DailyNoteEntity
 import com.example.addnevnik.domain.BpClassifier
 import com.example.addnevnik.domain.BpStats
+import com.example.addnevnik.util.BpDataMapper
 import com.example.addnevnik.util.MeasurementRow
 import com.example.addnevnik.util.PatientInfo
 import com.example.addnevnik.util.PdfReportGenerator
@@ -86,6 +87,14 @@ fun HistoryScreen(viewModel: HomeViewModel, settingsViewModel: SettingsViewModel
     val allDailyNotes by viewModel.allDailyNotes.collectAsStateWithLifecycle()
     val bpStats by viewModel.bpStats.collectAsStateWithLifecycle()
     val settings by settingsViewModel.state.collectAsStateWithLifecycle()
+
+    // Логирование для отладки
+    LaunchedEffect(allPressure) {
+        android.util.Log.d("HistoryScreen", "allPressure size: ${allPressure.size}")
+        if (allPressure.isNotEmpty()) {
+            android.util.Log.d("HistoryScreen", "First entry: ${allPressure.first()}")
+        }
+    }
 
     var displayMode by remember { mutableStateOf("Бланк") }
     val scope = rememberCoroutineScope()
@@ -213,52 +222,8 @@ fun HistoryScreen(viewModel: HomeViewModel, settingsViewModel: SettingsViewModel
                                 avgHr = avgPulse
                             )
 
-                            val calendar = Calendar.getInstance()
-                            val dateKeyFmt = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-                            val timeFmt = SimpleDateFormat("HH:mm", Locale.getDefault())
-
-                            val rows = allPressure.groupBy {
-                                calendar.timeInMillis = it.timestamp_ms
-                                calendar.set(Calendar.HOUR_OF_DAY, 0)
-                                calendar.set(Calendar.MINUTE, 0)
-                                calendar.set(Calendar.SECOND, 0)
-                                calendar.set(Calendar.MILLISECOND, 0)
-                                calendar.timeInMillis
-                            }.map { (dateMs, entries) ->
-                                val morningEntry = entries.filter {
-                                    calendar.timeInMillis = it.timestamp_ms
-                                    calendar.get(Calendar.HOUR_OF_DAY) in 6..10
-                                }.let { list -> list.find { it.isPrimary } ?: list.firstOrNull() }
-
-                                val eveningEntry = entries.filter {
-                                    calendar.timeInMillis = it.timestamp_ms
-                                    calendar.get(Calendar.HOUR_OF_DAY) in 18..23
-                                }.let { list -> list.find { it.isPrimary } ?: list.firstOrNull() }
-
-                                val allOtherCount = entries.count {
-                                    calendar.timeInMillis = it.timestamp_ms
-                                    val hour = calendar.get(Calendar.HOUR_OF_DAY)
-                                    hour !in 6..10 && hour !in 18..23
-                                }
-
-                                val dailyNoteKey = dateKeyFmt.format(Date(dateMs))
-                                val dailyNote = allDailyNotes.find { it.dateKey == dailyNoteKey }
-
-                                MeasurementRow(
-                                    date = dateMs,
-                                    morningTime = morningEntry?.let { timeFmt.format(Date(it.timestamp_ms)) },
-                                    eveningTime = eveningEntry?.let { timeFmt.format(Date(it.timestamp_ms)) },
-                                    morningAd = morningEntry?.let { "${it.systolic}/${it.diastolic}" },
-                                    morningHr = morningEntry?.pulse,
-                                    eveningAd = eveningEntry?.let { "${it.systolic}/${it.diastolic}" },
-                                    eveningHr = eveningEntry?.pulse,
-                                    note = listOfNotNull(morningEntry?.tag, eveningEntry?.tag)
-                                        .firstOrNull { it.isNotBlank() },
-                                    medication = dailyNote?.medication,
-                                    wellbeing = dailyNote?.wellbeing,
-                                    outOfRangeCount = allOtherCount
-                                )
-                            }.sortedByDescending { it.date }
+                            // Используем единый Mapper вместо дублирования логики
+                            val rows = BpDataMapper.toMeasurementRows(allPressure, allDailyNotes)
 
                             val file = PdfReportGenerator.generate(context, patient, rows)
 
@@ -736,15 +701,16 @@ private fun EditDayBottomSheetContent(
         mutableStateOf(entries.find { it.isPrimary }?.id)
     }
 
-    val calendar = Calendar.getInstance()
-    val morningEntries = entries.filter {
-        calendar.timeInMillis = it.timestamp_ms
-        calendar.get(Calendar.HOUR_OF_DAY) in 6..10
+    val morningEntries = entries.filter { entry ->
+        val cal = Calendar.getInstance()
+        cal.timeInMillis = entry.timestamp_ms
+        cal.get(Calendar.HOUR_OF_DAY) < 12
     }.sortedByDescending { it.timestamp_ms }
 
-    val eveningEntries = entries.filter {
-        calendar.timeInMillis = it.timestamp_ms
-        calendar.get(Calendar.HOUR_OF_DAY) in 18..23
+    val eveningEntries = entries.filter { entry ->
+        val cal = Calendar.getInstance()
+        cal.timeInMillis = entry.timestamp_ms
+        cal.get(Calendar.HOUR_OF_DAY) >= 12
     }.sortedByDescending { it.timestamp_ms }
 
     Column(
@@ -1227,7 +1193,6 @@ private class DayRecord {
 
 private fun groupMeasurementsByDay(data: List<BloodPressureEntity>): Map<String, DayRecord> {
     val dateFormat = SimpleDateFormat("dd.MM.yyyy", Locale("ru"))
-    val calendar = Calendar.getInstance()
     val grouped = mutableMapOf<String, DayRecord>()
 
     data.sortedByDescending { it.timestamp_ms }.forEach { entry ->
@@ -1235,12 +1200,14 @@ private fun groupMeasurementsByDay(data: List<BloodPressureEntity>): Map<String,
         val record = grouped.getOrPut(dateKey) { DayRecord() }
         record.allEntries.add(entry)
 
-        calendar.timeInMillis = entry.timestamp_ms
-        val hour = calendar.get(Calendar.HOUR_OF_DAY)
+        // Создаем новый Calendar для каждой записи, чтобы избежать побочных эффектов
+        val cal = Calendar.getInstance()
+        cal.timeInMillis = entry.timestamp_ms
+        val hour = cal.get(Calendar.HOUR_OF_DAY)
 
-        if (hour in 6..10) {
+        if (hour < 12) {
             record.morningList.add(entry)
-        } else if (hour in 18..23) {
+        } else {
             record.eveningList.add(entry)
         }
     }

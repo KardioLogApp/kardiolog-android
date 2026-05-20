@@ -36,10 +36,12 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import com.example.addnevnik.util.BpOcrAnalyzer
+import com.example.addnevnik.util.BpOcrParser
 import org.opencv.android.OpenCVLoader
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+
+private const val TAG_SCAN = "BP_SCAN"
 
 @Composable
 fun ScanScreen(
@@ -52,8 +54,8 @@ fun ScanScreen(
 
     var hasCameraPermission by remember {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA)
-                    == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+                PackageManager.PERMISSION_GRANTED
         )
     }
 
@@ -63,24 +65,34 @@ fun ScanScreen(
     var previewSize by remember { mutableStateOf(IntSize.Zero) }
     var overlayRectPx by remember { mutableStateOf<Rect?>(null) }
 
-    // Refs для доступа из фонового потока без recompose
     val isScanningRef = remember { mutableStateOf(true) }
     val overlayRectRef = remember { mutableStateOf<Rect?>(null) }
     val previewSizeRef = remember { mutableStateOf(IntSize.Zero) }
-    val analyzerRef = remember { mutableStateOf<BpOcrAnalyzer?>(null) }
+    val analyzerRef = remember { mutableStateOf<BpOcrParser?>(null) }
 
-    // Синхронизируем refs при изменении state
-    LaunchedEffect(isScanning) { isScanningRef.value = isScanning }
+    LaunchedEffect(isScanning) {
+        isScanningRef.value = isScanning
+        Log.d(TAG_SCAN, "isScanning=$isScanning")
+    }
+
     LaunchedEffect(overlayRectPx) {
         overlayRectRef.value = overlayRectPx
-        analyzerRef.value = null // сбросить analyzer при изменении rect
+        analyzerRef.value = null
+        Log.d(TAG_SCAN, "overlay updated=$overlayRectPx, analyzer reset")
     }
-    LaunchedEffect(previewSize) { previewSizeRef.value = previewSize }
+
+    LaunchedEffect(previewSize) {
+        previewSizeRef.value = previewSize
+        if (previewSize != IntSize.Zero) {
+            Log.d(TAG_SCAN, "previewSize=${previewSize.width}x${previewSize.height}")
+        }
+    }
 
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
         hasCameraPermission = granted
+        Log.d(TAG_SCAN, "camera permission granted=$granted")
         if (!granted) {
             Toast.makeText(context, "Нет доступа к камере", Toast.LENGTH_SHORT).show()
             onBack()
@@ -88,24 +100,35 @@ fun ScanScreen(
     }
 
     LaunchedEffect(Unit) {
-        if (!hasCameraPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
+        if (!hasCameraPermission) {
+            Log.d(TAG_SCAN, "requesting camera permission")
+            permissionLauncher.launch(Manifest.permission.CAMERA)
+        } else {
+            Log.d(TAG_SCAN, "camera permission already granted")
+        }
     }
 
     val executor: ExecutorService = remember { Executors.newSingleThreadExecutor() }
-    DisposableEffect(Unit) { onDispose { executor.shutdown() } }
+    DisposableEffect(Unit) {
+        onDispose {
+            Log.d(TAG_SCAN, "executor shutdown")
+            executor.shutdown()
+        }
+    }
 
     LaunchedEffect(Unit) {
         try {
             if (!OpenCVLoader.initDebug()) {
-                Log.e("ScanScreen", "OpenCV init failed")
+                Log.e(TAG_SCAN, "OpenCV init failed")
                 Toast.makeText(context, "Не удалось инициализировать OpenCV", Toast.LENGTH_LONG).show()
+            } else {
+                Log.d(TAG_SCAN, "OpenCV init success")
             }
         } catch (e: Throwable) {
-            Log.e("ScanScreen", "OpenCV init exception", e)
+            Log.e(TAG_SCAN, "OpenCV init exception", e)
         }
     }
 
-    // PreviewView создаётся один раз и сохраняется
     val previewView = remember {
         PreviewView(context).apply {
             scaleType = ScaleType.FILL_CENTER
@@ -113,9 +136,10 @@ fun ScanScreen(
         }
     }
 
-    // Камера привязывается ОДИН РАЗ через LaunchedEffect
     LaunchedEffect(hasCameraPermission) {
         if (!hasCameraPermission) return@LaunchedEffect
+
+        Log.d(TAG_SCAN, "binding camera use cases")
 
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         cameraProviderFuture.addListener({
@@ -147,36 +171,80 @@ fun ScanScreen(
                         )
 
                         if (imageRect == null) {
+                            Log.d(
+                                TAG_SCAN,
+                                "imageRect=null frame=${imageProxy.width}x${imageProxy.height} " +
+                                    "preview=${pSize.width}x${pSize.height} overlay=$overlayRect"
+                            )
                             imageProxy.close()
                             return@setAnalyzer
                         }
 
-                        // Создаём analyzer один раз
+                        Log.d(
+                            TAG_SCAN,
+                            "frame=${imageProxy.width}x${imageProxy.height}, " +
+                                "preview=${pSize.width}x${pSize.height}, " +
+                                "overlay=[l=${overlayRect.left}, t=${overlayRect.top}, " +
+                                "r=${overlayRect.right}, b=${overlayRect.bottom}], " +
+                                "imageRect=[l=${imageRect.left}, t=${imageRect.top}, " +
+                                "r=${imageRect.right}, b=${imageRect.bottom}]"
+                        )
+
+                        Log.d(
+                            TAG_SCAN,
+                            "analyzerRef before=${analyzerRef.value?.javaClass?.name}"
+                        )
+
                         val analyzer = analyzerRef.value
-                            ?: BpOcrAnalyzer(imageRect).also { analyzerRef.value = it }
+                            ?: BpOcrParser().also {
+                                analyzerRef.value = it
+                                Log.d(
+                                    TAG_SCAN,
+                                    "BpOcrParser created, class=${it.javaClass.name}"
+                                )
+                            }
 
-                        val result = analyzer.analyze(imageProxy)
+                        val result = analyzer.analyze(imageProxy, imageRect)
 
-                        if (
+                        if (result == null) {
+                            Log.d(TAG_SCAN, "analyze -> null")
+                        } else {
+                            Log.d(
+                                TAG_SCAN,
+                                "analyze -> sys=${result.result.sys}, " +
+                                    "dia=${result.result.dia}, " +
+                                    "pulse=${result.result.pulse}, " +
+                                    "confidence=${result.result.confidence}, " +
+                                    "rows=${result.rows.size}"
+                            )
+                        }
+
+                        val accepted =
                             result != null &&
-                            isScanningRef.value &&
-                            result.result.confidence >= 0.5f &&
-                            result.result.sys != null &&
-                            result.result.dia != null
-                        ) {
+                                isScanningRef.value &&
+                                result.result.confidence >= 0.5f &&
+                                result.result.sys != null &&
+                                result.result.dia != null
+
+                        if (accepted) {
                             val scanResult = ScanOcrResult(
-                                systolic = result.result.sys,
+                                systolic = result!!.result.sys,
                                 diastolic = result.result.dia,
                                 pulse = result.result.pulse
                             )
+                            Log.d(TAG_SCAN, "result accepted -> $scanResult")
+
                             mainHandler.post {
                                 ocrResult = scanResult
                                 isScanning = false
                                 isScanningRef.value = false
+                                Log.d(TAG_SCAN, "scan stopped, showing confirmation form")
                             }
+                        } else if (result != null) {
+                            Log.d(TAG_SCAN, "result rejected by gate")
                         }
                     } catch (e: Throwable) {
-                        Log.e("ScanScreen", "Analyzer error", e)
+                        Log.e(TAG_SCAN, "Analyzer error", e)
                     } finally {
                         imageProxy.close()
                     }
@@ -189,8 +257,9 @@ fun ScanScreen(
                     preview,
                     imageAnalysis
                 )
+                Log.d(TAG_SCAN, "camera bound successfully")
             } catch (e: Exception) {
-                Log.e("ScanScreen", "Camera bind failed", e)
+                Log.e(TAG_SCAN, "Camera bind failed", e)
             }
         }, ContextCompat.getMainExecutor(context))
     }
@@ -200,7 +269,6 @@ fun ScanScreen(
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        // PreviewView — всегда в дереве, не пересоздаётся
         if (hasCameraPermission) {
             AndroidView(
                 factory = { previewView },
@@ -219,7 +287,6 @@ fun ScanScreen(
             }
         }
 
-        // Рамка сканирования
         if (isScanning && !showManualForm) {
             Box(
                 modifier = Modifier
@@ -231,19 +298,21 @@ fun ScanScreen(
                         val rectHeight = h * 0.28f
                         val left = (w - rectWidth) / 2f
                         val top = (h - rectHeight) / 2.8f
-                        overlayRectPx = Rect(
+                        val newRect = Rect(
                             left = left,
                             top = top,
                             right = left + rectWidth,
                             bottom = top + rectHeight
                         )
+                        if (overlayRectPx != newRect) {
+                            overlayRectPx = newRect
+                        }
                     }
             ) {
                 ScannerOverlay()
             }
         }
 
-        // Кнопка закрыть
         if (!showManualForm) {
             IconButton(
                 onClick = onBack,
@@ -260,10 +329,10 @@ fun ScanScreen(
             }
         }
 
-        // Кнопка "Ввести вручную"
         if (isScanning && !showManualForm) {
             Button(
                 onClick = {
+                    Log.d(TAG_SCAN, "manual entry requested")
                     ocrResult = ScanOcrResult(null, null, null)
                     showManualForm = true
                     isScanning = false
@@ -292,7 +361,6 @@ fun ScanScreen(
             }
         }
 
-        // Форма подтверждения
         val result = ocrResult
         if ((!isScanning || showManualForm) && result != null) {
             Box(
@@ -306,8 +374,12 @@ fun ScanScreen(
             ) {
                 BpConfirmationForm(
                     initial = result,
-                    onConfirm = { sys, dia, pulse -> onResult(sys, dia, pulse) },
+                    onConfirm = { sys, dia, pulse ->
+                        Log.d(TAG_SCAN, "confirm result sys=$sys dia=$dia pulse=$pulse")
+                        onResult(sys, dia, pulse)
+                    },
                     onRetry = {
+                        Log.d(TAG_SCAN, "retry scan, analyzer reset")
                         ocrResult = null
                         showManualForm = false
                         isScanning = true
@@ -335,7 +407,6 @@ private fun mapPreviewRectToImageRect(
     val imageW = imageWidth.toFloat()
     val imageH = imageHeight.toFloat()
 
-    // FILL_CENTER: масштаб по максимуму (без letterbox)
     val scale = maxOf(previewW / imageW, previewH / imageH)
     val fittedWidth = imageW * scale
     val fittedHeight = imageH * scale

@@ -14,7 +14,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -48,7 +47,7 @@ fun ChartScreen(
 ) {
     var selectedPeriod by remember { mutableStateOf("Месяц") }
     val periods = listOf("Неделя", "Месяц", "3 месяца", "Год", "Период")
-    val softRed = Color(0xFFB91C1C)
+    val softRed = Color(0xFFFF5252)
     
     var showDateRangePicker by remember { mutableStateOf(false) }
     val dateRangePickerState = rememberDateRangePickerState()
@@ -175,7 +174,7 @@ fun ChartScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            val filteredData = remember(data, selectedPeriod, customRange) {
+            val filteredData = run {
                 val now = System.currentTimeMillis()
                 val calendar = Calendar.getInstance()
                 val startTime = when (selectedPeriod) {
@@ -204,10 +203,8 @@ fun ChartScreen(
                 }
                 val endTime = if (selectedPeriod == "Период") customRange?.second ?: now else now
                 
-                val filtered = data.filter { it.timestamp_ms in startTime..endTime }
+                data.filter { it.timestamp_ms in startTime..endTime }
                     .sortedBy { it.timestamp_ms }
-                
-                filtered
             }
 
             if (filteredData.isEmpty()) {
@@ -220,25 +217,14 @@ fun ChartScreen(
                     Text("Нет данных за этот период", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 16.sp)
                 }
             } else {
-                val sdfX = SimpleDateFormat("dd.MM", Locale("ru"))
-                
-                val baseTime = remember(filteredData) { filteredData.firstOrNull()?.timestamp_ms ?: 0L }
-                
-                // Временный лог для отладки точности координат
-                filteredData.forEach { entity ->
-                    val computedX = (entity.timestamp_ms - baseTime).toFloat()
-                    val formattedDate = java.text.SimpleDateFormat("dd.MM HH:mm", java.util.Locale.getDefault()).format(java.util.Date(entity.timestamp_ms))
-                    android.util.Log.d("CHART_DEBUG", "Original: ${entity.timestamp_ms}, Date: $formattedDate, ComputedX: $computedX, Sys: ${entity.systolic}, Dia: ${entity.diastolic}")
+                val systolicEntries = filteredData.mapIndexed { index, entity ->
+                    entryOf(index.toFloat(), entity.systolic.toFloat())
+                }
+                val diastolicEntries = filteredData.mapIndexed { index, entity ->
+                    entryOf(index.toFloat(), entity.diastolic.toFloat())
                 }
 
-                val systolicEntries = filteredData.map { entity ->
-                    entryOf((entity.timestamp_ms - baseTime).toFloat(), entity.systolic.toFloat())
-                }
-                val diastolicEntries = filteredData.map { entity ->
-                    entryOf((entity.timestamp_ms - baseTime).toFloat(), entity.diastolic.toFloat())
-                }
-
-                val chartEntryModelProducer = remember(systolicEntries, diastolicEntries) {
+                val chartEntryModelProducer = remember(filteredData.size) {
                     ChartEntryModelProducer(listOf(systolicEntries, diastolicEntries))
                 }
 
@@ -252,7 +238,6 @@ fun ChartScreen(
                         val absoluteMin = minOf(minSys, minDia).toFloat()
                         val absoluteMax = maxOf(maxSys, maxDia).toFloat()
                         
-                        // Добавляем отступы сверху и снизу, чтобы линия не прилипала к краям
                         AxisValuesOverrider.fixed(
                             minY = (absoluteMin - 10f).coerceAtLeast(0f),
                             maxY = absoluteMax + 10f
@@ -278,24 +263,24 @@ fun ChartScreen(
                                         LineChart.LineSpec(
                                             lineColor = softRed.toArgb(),
                                             lineBackgroundShader = verticalGradient(
-                                                arrayOf(softRed.copy(alpha = 0.1f), Color.Transparent)
+                                                arrayOf(softRed.copy(alpha = 0.15f), Color.Transparent)
                                             ),
                                             point = shapeComponent(
                                                 shape = Shapes.pillShape,
                                                 color = softRed
                                             ),
-                                            pointSizeDp = 4f
+                                            pointSizeDp = 6f
                                         ),
                                         LineChart.LineSpec(
-                                            lineColor = MaterialTheme.colorScheme.primary.toArgb(),
+                                            lineColor = Color(0xFF4CAF50).toArgb(),
                                             lineBackgroundShader = verticalGradient(
-                                                arrayOf(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), Color.Transparent)
+                                                arrayOf(Color(0xFF4CAF50).copy(alpha = 0.15f), Color.Transparent)
                                             ),
                                             point = shapeComponent(
                                                 shape = Shapes.pillShape,
-                                                color = MaterialTheme.colorScheme.primary
+                                                color = Color(0xFF4CAF50)
                                             ),
-                                            pointSizeDp = 4f
+                                            pointSizeDp = 6f
                                         )
                                     ),
                                     axisValuesOverrider = axisValuesOverrider
@@ -307,12 +292,32 @@ fun ChartScreen(
                                 ),
                                 bottomAxis = rememberBottomAxis(
                                     valueFormatter = { value, _ ->
-                                        val sdf = java.text.SimpleDateFormat("dd.MM", java.util.Locale.getDefault())
-                                        sdf.format(java.util.Date(baseTime + value.toLong()))
+                                        val index = value.toInt().coerceIn(0, filteredData.size - 1)
+                                        val date = Date(filteredData[index].timestamp_ms)
+                                        val daysDiff = if (filteredData.size > 1) {
+                                            (filteredData.last().timestamp_ms - filteredData.first().timestamp_ms) / 86400000L
+                                        } else 0L
+                                        
+                                        when {
+                                            daysDiff <= 1 -> SimpleDateFormat("HH:mm", Locale("ru")).format(date)
+                                            daysDiff <= 31 -> {
+                                                val cal = Calendar.getInstance()
+                                                cal.timeInMillis = filteredData.first().timestamp_ms
+                                                val firstMonth = cal.get(Calendar.MONTH)
+                                                cal.timeInMillis = filteredData[index].timestamp_ms
+                                                val currentMonth = cal.get(Calendar.MONTH)
+                                                if (currentMonth != firstMonth || index == 0 || index == filteredData.size - 1) {
+                                                    SimpleDateFormat("dd.MM", Locale("ru")).format(date)
+                                                } else {
+                                                    SimpleDateFormat("dd", Locale("ru")).format(date)
+                                                }
+                                            }
+                                            else -> SimpleDateFormat("MMM", Locale("ru")).format(date)
+                                        }
                                     },
-                                    labelRotationDegrees = -45f,
+                                    labelRotationDegrees = 0f,
                                     tickLength = 0.dp,
-                                    itemPlacer = remember { AxisItemPlacer.Horizontal.default(spacing = 3) }
+                                    itemPlacer = AxisItemPlacer.Horizontal.default(spacing = 2)
                                 ),
                                 modifier = Modifier.fillMaxSize(),
                                 horizontalLayout = HorizontalLayout.FullWidth(),
@@ -344,7 +349,7 @@ fun ChartScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     AverageCard("СИСТ", "$avgSys", softRed, Modifier.weight(1f))
-                    AverageCard("ДИАС", "$avgDia", MaterialTheme.colorScheme.primary, Modifier.weight(1f))
+                    AverageCard("ДИАС", "$avgDia", Color(0xFF4CAF50), Modifier.weight(1f))
                     AverageCard("ПУЛЬС", "$avgPulse", MaterialTheme.colorScheme.onSurfaceVariant, Modifier.weight(1f))
                 }
 

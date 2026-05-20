@@ -1,0 +1,6 @@
+C:\Android\ADDnevnik\app\src\main\java\com\example\addnevnik\ui\screens\scan\ScanScreen.kt:39: import com.example.addnevnik.util.BpOcrAnalyzer
+C:\Android\ADDnevnik\app\src\main\java\com\example\addnevnik\ui\screens\scan\ScanScreen.kt:71: val analyzerRef = remember { mutableStateOf<BpOcrAnalyzer?>(null) }
+C:\Android\ADDnevnik\app\src\main\java\com\example\addnevnik\ui\screens\scan\ScanScreen.kt:156: imageAnalysis.setAnalyzer(executor) { imageProxy ->
+C:\Android\ADDnevnik\app\src\main\java\com\example\addnevnik\ui\screens\scan\ScanScreen.kt:199: ?: BpOcrAnalyzer(imageRect).also {
+C:\Android\ADDnevnik\app\src\main\java\com\example\addnevnik\ui\screens\scan\ScanScreen.kt:203: "BpOcrAnalyzer created with guideRect=$imageRect, class=${it.javaClass.name}"
+C:\Android\ADDnevnik\app\src\main\java\com\example\addnevnik\util\BpOcrParser.kt:36: class BpOcrAnalyzer(
