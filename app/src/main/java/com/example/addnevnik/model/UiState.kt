@@ -27,6 +27,8 @@ data class NoteItem(val id: Int, val title: String, val content: String)
 
 data class SettingsUiState(
     val profileName: String = "Иван Иванов",
+    val gender: String = "Мужской",
+    val birthDate: String = "01.01.1980",
     val profileStatus: String = "",
     val notificationsEnabled: Boolean = true,
     val darkThemeEnabled: Boolean = false,
@@ -37,5 +39,8 @@ data class SettingsUiState(
     val eveningReminderEnabled: Boolean = false,
     val eveningReminderHour: Int = 20,
     val eveningReminderMinute: Int = 0,
-    val hasRequestedNotificationPermission: Boolean = false
+    val hasRequestedNotificationPermission: Boolean = false,
+    val isPremium: Boolean = false,
+    val promoCode: String? = null,
+    val premiumActivatedAt: Long? = null
 )

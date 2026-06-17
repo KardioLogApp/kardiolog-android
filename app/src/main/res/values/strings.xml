@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">КардиоЛог</string>
     <string name="screen_home">Главная</string>
-    <string name="screen_notes">Заметки</string>
+    <string name="screen_history">Дневник</string>
     <string name="screen_settings">Настройки</string>
     <string name="screen_chart">График</string>
 </resources>

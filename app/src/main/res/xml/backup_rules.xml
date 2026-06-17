@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- Включаем бекап базы данных и настроек -->
+    <include domain="database" path="." />
+    <include domain="sharedpref" path="." />
+    
+    <!-- Исключаем временные файлы и кэш, если они есть -->
+    <exclude domain="files" path="." />
+    <exclude domain="external" path="." />
+</full-backup-content>

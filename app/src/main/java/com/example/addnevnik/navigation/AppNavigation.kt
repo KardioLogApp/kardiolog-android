@@ -2,25 +2,29 @@ package com.example.addnevnik.navigation
 
 import android.content.Context
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ShowChart
+import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.Home
-import androidx.compose.material.icons.outlined.NoteAlt
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.runtime.*
-import androidx.compose.ui.platform.LocalContext
-import com.example.addnevnik.AppDnevnikApplication
-import com.example.addnevnik.data.repository.NotesRepository
-import com.example.addnevnik.data.repository.PressureRepository
-import com.example.addnevnik.data.repository.SettingsRepository
-import com.example.addnevnik.viewmodel.AppViewModelFactory
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -31,16 +35,20 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.example.addnevnik.AppDnevnikApplication
 import com.example.addnevnik.R
-import com.example.addnevnik.ui.screens.DisclaimerScreen
+import com.example.addnevnik.data.repository.NotesRepository
+import com.example.addnevnik.data.repository.PressureRepository
+import com.example.addnevnik.data.repository.SettingsRepository
+import com.example.addnevnik.screens.HistoryScreen
 import com.example.addnevnik.screens.HomeScreen
+import com.example.addnevnik.screens.SettingsScreen
 import com.example.addnevnik.ui.screens.ChartScreen
+import com.example.addnevnik.ui.screens.DisclaimerScreen
 import com.example.addnevnik.ui.screens.report.ReportScreen
 import com.example.addnevnik.ui.screens.scan.ScanScreen
-import com.example.addnevnik.screens.NotesScreen
-import com.example.addnevnik.screens.SettingsScreen
+import com.example.addnevnik.viewmodel.AppViewModelFactory
 import com.example.addnevnik.viewmodel.HomeViewModel
-import com.example.addnevnik.viewmodel.NotesViewModel
 import com.example.addnevnik.viewmodel.SettingsViewModel
 
 data class BottomDestination(
@@ -51,7 +59,7 @@ data class BottomDestination(
 
 object AppRoute {
     const val Home = "home"
-    const val Notes = "notes"
+    const val History = "history"
     const val Settings = "settings"
     const val Chart = "chart"
     const val Scan = "scan"
@@ -83,24 +91,44 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
 
     val destinations = listOf(
         BottomDestination(AppRoute.Home, R.string.screen_home, Icons.Outlined.Home),
+        BottomDestination(AppRoute.History, R.string.screen_history, Icons.Outlined.History),
         BottomDestination(AppRoute.Chart, R.string.screen_chart, Icons.AutoMirrored.Outlined.ShowChart),
-        BottomDestination(AppRoute.Notes, R.string.screen_notes, Icons.Outlined.NoteAlt),
         BottomDestination(AppRoute.Settings, R.string.screen_settings, Icons.Outlined.Settings)
     )
 
-    Box {
-        Scaffold(
-            bottomBar = {
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentRoute = navBackStackEntry?.destination?.route
+
+    val showBottomBar = currentRoute in setOf(
+        AppRoute.Home,
+        AppRoute.History,
+        AppRoute.Chart,
+        AppRoute.Settings
+    )
+
+    // Scaffold без внешнего Box — он сам занимает весь экран
+    // DisclaimerScreen внутри content лямбды поверх NavHost
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        bottomBar = {
+            if (showBottomBar) {
                 BottomBar(
                     navController = navController,
                     destinations = destinations
                 )
             }
-        ) { innerPadding ->
+        }
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+                .imePadding()
+        ) {
             NavHost(
                 navController = navController,
                 startDestination = AppRoute.Home,
-                modifier = Modifier.padding(innerPadding)
+                modifier = Modifier.fillMaxSize()
             ) {
                 composable(AppRoute.Home) {
                     val vm: HomeViewModel = viewModel(factory = factory)
@@ -110,12 +138,13 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
 
                     HomeScreen(
                         viewModel = vm,
-                        onShowChart = { navController.navigate(AppRoute.Chart) },
+                        onShowChart = { navController.navigate(AppRoute.History) },
                         onScanRequest = { navController.navigate(AppRoute.Scan) },
                         onShowReport = { navController.navigate(AppRoute.Report) },
                         scanResult = scanResult
                     )
                 }
+
                 composable(AppRoute.Chart) {
                     val vm: HomeViewModel = viewModel(factory = factory)
                     val allPressure by vm.allPressure.collectAsStateWithLifecycle()
@@ -124,10 +153,13 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                         onBack = { navController.popBackStack() }
                     )
                 }
-                composable(AppRoute.Notes) {
-                    val vm: NotesViewModel = viewModel(factory = factory)
-                    NotesScreen(viewModel = vm)
+
+                composable(AppRoute.History) {
+                    val vm: HomeViewModel = viewModel(factory = factory)
+                    val svm: SettingsViewModel = viewModel(factory = factory)
+                    HistoryScreen(viewModel = vm, settingsViewModel = svm)
                 }
+
                 composable(AppRoute.Settings) {
                     val vm: SettingsViewModel = viewModel(factory = factory)
                     val state by vm.state.collectAsStateWithLifecycle()
@@ -137,36 +169,46 @@ fun AppNavigation(navController: NavHostController = rememberNavController()) {
                         onThemeToggle = vm::updateTheme,
                         onMorningReminderToggle = vm::updateMorningReminder,
                         onEveningReminderToggle = vm::updateEveningReminder,
-                        onEditClick = vm::enterEditMode
+                        onEditClick = vm::enterEditMode,
+                        onUpdateName = vm::updateProfileName,
+                        onUpdateGender = vm::updateGender,
+                        onUpdateBirthDate = vm::updateBirthDate,
+                        onLoadTestData = { vm.loadTestData {} },
+                        onClearData = { vm.clearAllData {} },
+                        onActivatePromo = vm::activatePremium
                     )
                 }
+
                 composable(AppRoute.Scan) {
                     ScanScreen(
-                        onResult = { result ->
+                        onResult = { sys, dia, pulse ->
+                            val p = pulse?.toString() ?: ""
                             navController.previousBackStackEntry
                                 ?.savedStateHandle
-                                ?.set("scan_result", "${result.systolic},${result.diastolic},${result.pulse}")
+                                ?.set("scan_result", "$sys,$dia,$p")
                             navController.popBackStack()
                         },
                         onBack = { navController.popBackStack() }
                     )
                 }
+
                 composable(AppRoute.Report) {
                     ReportScreen(
                         onBack = { navController.popBackStack() },
-                        repository = pressureRepository
+                        repository = pressureRepository,
+                        settingsRepository = settingsRepository
                     )
                 }
             }
-        }
 
-        if (!disclaimerAccepted) {
-            DisclaimerScreen(
-                onAccept = {
-                    prefs.edit().putBoolean("disclaimer_accepted", true).apply()
-                    disclaimerAccepted = true
-                }
-            )
+            if (!disclaimerAccepted) {
+                DisclaimerScreen(
+                    onAccept = {
+                        prefs.edit().putBoolean("disclaimer_accepted", true).apply()
+                        disclaimerAccepted = true
+                    }
+                )
+            }
         }
     }
 }
@@ -182,15 +224,18 @@ private fun BottomBar(
     NavigationBar {
         destinations.forEach { destination ->
             val selected = currentDestination?.hierarchy?.any { it.route == destination.route } == true
+
             NavigationBarItem(
                 selected = selected,
                 onClick = {
-                    navController.navigate(destination.route) {
-                        popUpTo(navController.graph.findStartDestination().id) {
-                            saveState = true
+                    if (currentDestination?.route != destination.route) {
+                        navController.navigate(destination.route) {
+                            popUpTo(navController.graph.findStartDestination().id) {
+                                saveState = true
+                            }
+                            launchSingleTop = true
+                            restoreState = true
                         }
-                        launchSingleTop = true
-                        restoreState = true
                     }
                 },
                 icon = {

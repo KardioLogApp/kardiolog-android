@@ -35,6 +35,9 @@ interface AppDao {
     @Delete
     suspend fun deleteBloodPressure(entry: BloodPressureEntity)
 
+    @Query("DELETE FROM blood_pressure")
+    suspend fun clearAllBloodPressure()
+
     // Notes
     @Query("SELECT * FROM notes ORDER BY timestamp_ms DESC")
     fun getAllNotes(): Flow<List<NoteEntity>>
@@ -47,4 +50,21 @@ interface AppDao {
 
     @Delete
     suspend fun deleteNote(note: NoteEntity)
+
+    // Daily Notes
+    @Query("SELECT * FROM daily_notes WHERE dateKey = :dateKey LIMIT 1")
+    suspend fun getDailyNote(dateKey: String): DailyNoteEntity?
+
+    @Query("SELECT * FROM daily_notes")
+    fun getAllDailyNotes(): Flow<List<DailyNoteEntity>>
+
+    @androidx.room.Upsert
+    suspend fun upsertDailyNote(note: DailyNoteEntity)
+
+    // Profile
+    @Query("SELECT * FROM profile WHERE id = 0")
+    fun getProfile(): Flow<ProfileEntity?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertProfile(profile: ProfileEntity)
 }

@@ -16,18 +16,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.addnevnik.data.repository.PressureRepository
+import com.example.addnevnik.data.repository.SettingsRepository
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ReportScreen(
     onBack: () -> Unit,
-    repository: PressureRepository
+    repository: PressureRepository,
+    settingsRepository: SettingsRepository
 ) {
     val context = LocalContext.current
     val viewModel: ReportViewModel = viewModel(factory = object : androidx.lifecycle.ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : androidx.lifecycle.ViewModel> create(modelClass: Class<T>): T {
-            return ReportViewModel(repository) as T
+            return ReportViewModel(repository, settingsRepository) as T
         }
     })
     

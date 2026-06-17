@@ -34,5 +34,10 @@ class NotesRepository private constructor(private val appDao: AppDao) {
                 instance ?: NotesRepository(appDao).also { instance = it }
             }
         }
+
+        fun getInstance(context: android.content.Context): NotesRepository {
+            val app = context.applicationContext as com.example.addnevnik.AppDnevnikApplication
+            return getInstance(app.database.appDao())
+        }
     }
 }
